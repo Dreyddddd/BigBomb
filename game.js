@@ -1463,6 +1463,7 @@ class Bot extends Character {
         // NEW AI VARS
         this.campingTimer = 0;
         this.lastSectorPos = new Vector2(x, y);
+        this.lastAiTick = -1;
     }
     
     aiUpdate(terrain, entities, projectiles, game, cache) {
@@ -2074,13 +2075,17 @@ class Game {
             this.player.input.aimTarget = this.input.mouse.worldPos;
         }
         
+        const aiStride = Math.max(1, Math.floor(aliveEntities.length / 12));
         this.entities.forEach(ent => {
             if (ent instanceof Bot) {
                 const enemies = CONFIG.GAME_MODE === 'DM'
                     ? enemyCacheDm
                     : (ent.team === 1 ? enemyCacheByTeam[1] : enemyCacheByTeam[2]);
                 const cache = { enemies, medkits, weaponCrates };
-                ent.aiUpdate(this.terrain, this.entities, this.projectiles, this, cache);
+                if (aiStride === 1 || (this.tick + ent.id) % aiStride === 0) {
+                    ent.aiUpdate(this.terrain, this.entities, this.projectiles, this, cache);
+                    ent.lastAiTick = this.tick;
+                }
             }
             ent.update(this.terrain, this.projectiles, this.crates, this);
         });
