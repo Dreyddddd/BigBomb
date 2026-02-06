@@ -358,6 +358,16 @@ input[type="range"]::-webkit-slider-thumb {
     box-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
 }
 
+input[type="color"] {
+    width: 100%;
+    height: 46px;
+    border: 2px solid #555;
+    border-radius: 6px;
+    background: #111;
+    padding: 4px;
+    cursor: pointer;
+}
+
 @keyframes slotPulse {
     0%, 100% { box-shadow: 0 0 15px rgba(241, 196, 15, 0.45), inset 0 0 5px rgba(255,255,255,0.1); }
     50% { box-shadow: 0 0 24px rgba(241, 196, 15, 0.75), inset 0 0 8px rgba(255,255,255,0.2); }
