@@ -29,6 +29,12 @@ function distToSegment(p, v, w) {
     return Math.sqrt(distToSegmentSquared(p, v, w));
 }
 
+function distSq(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return dx * dx + dy * dy;
+}
+
 
 // --- 2. Константы ---
 const CONFIG = {
@@ -1459,7 +1465,7 @@ class Bot extends Character {
         this.lastSectorPos = new Vector2(x, y);
     }
     
-    aiUpdate(terrain, entities, crates, projectiles, game) {
+    aiUpdate(terrain, entities, projectiles, game, cache) {
         this.decisionTimer--;
         this.targetSearchTimer--;
         this.campingTimer++;
@@ -1482,15 +1488,24 @@ class Bot extends Character {
         }
         
         // PROXIMITY ALERT: If enemy is too close, ignore everything and fight
-        let enemies = entities.filter(e => !e.dead && e !== this && (CONFIG.GAME_MODE === 'DM' || e.team !== this.team));
-        let closeEnemy = enemies.find(e => this.pos.dist(e.pos) < 250); // Increased "Personal Space"
+        const enemies = cache.enemies;
+        let closeEnemy = null;
+        const closeDistSq = 250 * 250;
+        for (let i = 0; i < enemies.length; i++) {
+            const enemy = enemies[i];
+            if (enemy === this || enemy.dead) continue;
+            if (distSq(this.pos, enemy.pos) < closeDistSq) {
+                closeEnemy = enemy;
+                break;
+            }
+        }
         
         if (closeEnemy) {
              this.currentTarget = closeEnemy;
              this.targetSearchTimer = 20; // Lock on
         } else if (this.targetSearchTimer <= 0) {
-             this.pickTarget(entities, game, crates);
-             this.targetSearchTimer = this.reactionSpeed;
+            this.pickTarget(entities, game, cache);
+            this.targetSearchTimer = this.reactionSpeed;
         }
 
         if (!this.currentTarget) return;
@@ -1504,7 +1519,7 @@ class Bot extends Character {
         }
         this.input.aimTarget = aimPoint;
 
-        let dist = this.pos.dist(targetPos);
+        let dist = Math.sqrt(distSq(this.pos, targetPos));
         
         // Movement Logic
         // If enemy is too close, maybe move AWAY?
@@ -1562,7 +1577,7 @@ class Bot extends Character {
         
         // Combat Logic
         if (this.currentTarget instanceof Character && !this.currentTarget.dead) {
-            let enemyDist = this.pos.dist(this.currentTarget.pos);
+            let enemyDist = Math.sqrt(distSq(this.pos, this.currentTarget.pos));
             // Don't shoot self if wall is close unless stuck
             let wallFace = terrain.isSolid(this.pos.x + (this.facingRight?20:-20), this.pos.y);
             
@@ -1579,34 +1594,66 @@ class Bot extends Character {
         }
     }
 
-    pickTarget(entities, game, crates) {
+    pickTarget(entities, game, cache) {
         // --- 1. SURVIVAL: Find Medkit ---
         if (this.hp < 60) {
-            let medkits = crates.filter(c => c.active && c.isMedkit);
-            if (medkits.length > 0) {
-                // Find nearest
-                medkits.sort((a,b) => this.pos.dist(a.pos) - this.pos.dist(b.pos));
-                this.currentTarget = { pos: medkits[0].pos, isStatic: true };
+            let nearestMedkit = null;
+            let nearestMedkitDist = Infinity;
+            const medkits = cache.medkits;
+            for (let i = 0; i < medkits.length; i++) {
+                const medkit = medkits[i];
+                const d = distSq(this.pos, medkit.pos);
+                if (d < nearestMedkitDist) {
+                    nearestMedkitDist = d;
+                    nearestMedkit = medkit;
+                }
+            }
+            if (nearestMedkit) {
+                this.currentTarget = { pos: nearestMedkit.pos, isStatic: true };
                 return;
             }
         }
 
         // --- 2. LOOTING: Find Weapon if I only have Pistol ---
         if (this.inventory.length === 1) {
-             let wepCrates = crates.filter(c => c.active && c.crateType === 'weapon');
-             if (wepCrates.length > 0) {
-                 wepCrates.sort((a,b) => this.pos.dist(a.pos) - this.pos.dist(b.pos));
-                 // Only go if it's reasonably close (don't cross entire map just for loot if fighting)
-                 if (this.pos.dist(wepCrates[0].pos) < 800) {
-                     this.currentTarget = { pos: wepCrates[0].pos, isStatic: true };
-                     return;
+             let nearestCrate = null;
+             let nearestCrateDist = Infinity;
+             const weaponCrates = cache.weaponCrates;
+             for (let i = 0; i < weaponCrates.length; i++) {
+                 const crate = weaponCrates[i];
+                 const d = distSq(this.pos, crate.pos);
+                 if (d < nearestCrateDist) {
+                     nearestCrateDist = d;
+                     nearestCrate = crate;
                  }
+             }
+             // Only go if it's reasonably close (don't cross entire map just for loot if fighting)
+             if (nearestCrate && Math.sqrt(nearestCrateDist) < 800) {
+                 this.currentTarget = { pos: nearestCrate.pos, isStatic: true };
+                 return;
              }
         }
 
-        let enemies = entities.filter(e => !e.dead && e !== this && (CONFIG.GAME_MODE === 'DM' || e.team !== this.team));
-        let visibleEnemies = enemies.filter(e => this.pos.dist(e.pos) < 600);
-        let nearestEnemy = visibleEnemies.length > 0 ? visibleEnemies[Math.floor(Math.random() * visibleEnemies.length)] : null;
+        const enemies = cache.enemies;
+        let nearestEnemy = null;
+        let closestEnemyDist = Infinity;
+        let visibleChoice = null;
+        let visibleCount = 0;
+        const visibleDistSq = 600 * 600;
+        for (let i = 0; i < enemies.length; i++) {
+            const enemy = enemies[i];
+            if (enemy === this || enemy.dead) continue;
+            const d = distSq(this.pos, enemy.pos);
+            if (d < visibleDistSq) {
+                visibleCount++;
+                if (Math.random() < 1 / visibleCount) visibleChoice = enemy;
+            }
+            if (d < closestEnemyDist) {
+                closestEnemyDist = d;
+                nearestEnemy = enemy;
+            }
+        }
+        const randomVisibleEnemy = visibleChoice;
 
         // --- CTF LOGIC ---
         if (CONFIG.GAME_MODE === 'CTF') {
@@ -1622,14 +1669,14 @@ class Bot extends Character {
                 return;
             }
             if (this.role === 'DEFENDER') {
-                if (nearestEnemy && this.pos.dist(nearestEnemy.pos) < 400) {
-                    this.currentTarget = nearestEnemy;
+                if (randomVisibleEnemy && distSq(this.pos, randomVisibleEnemy.pos) < 400 * 400) {
+                    this.currentTarget = randomVisibleEnemy;
                 } else {
                     this.currentTarget = { pos: myFlag.homePos, isStatic: true };
                 }
             } else { 
-                if (nearestEnemy && this.pos.dist(nearestEnemy.pos) < 300) {
-                    this.currentTarget = nearestEnemy;
+                if (randomVisibleEnemy && distSq(this.pos, randomVisibleEnemy.pos) < 300 * 300) {
+                    this.currentTarget = randomVisibleEnemy;
                 } else {
                     this.currentTarget = enemyFlag.carrier ? enemyFlag.carrier : { pos: enemyFlag.pos, isStatic: true }; 
                 }
@@ -1637,17 +1684,15 @@ class Bot extends Character {
         } 
         // --- DM / TDM LOGIC ---
         else {
-             if (nearestEnemy) {
-                 this.currentTarget = nearestEnemy;
+             if (randomVisibleEnemy) {
+                 this.currentTarget = randomVisibleEnemy;
              } else {
                  // Hunt distant enemies if none close
-                 if (enemies.length > 0) {
-                     // Find absolute closest
-                     enemies.sort((a,b) => this.pos.dist(a.pos) - this.pos.dist(b.pos));
-                     this.currentTarget = enemies[0];
+                 if (nearestEnemy) {
+                     this.currentTarget = nearestEnemy;
                  } else {
                      // Roam
-                     if (!this.roamSpot || this.pos.dist(this.roamSpot) < 100 || this.decisionTimer < -200) {
+                     if (!this.roamSpot || Math.sqrt(distSq(this.pos, this.roamSpot)) < 100 || this.decisionTimer < -200) {
                          this.roamSpot = new Vector2(Math.random()*CONFIG.WORLD_WIDTH, Math.random() * (CONFIG.WORLD_HEIGHT - 300));
                          this.decisionTimer = 300;
                      }
@@ -1985,16 +2030,30 @@ class Game {
         this.input.mouse.worldPos = this.input.mouse.screenPos.add(this.camera);
         this.updateWaveRespawn();
 
+        const aliveEntities = this.entities.filter(e => !e.dead);
+        const activeCrates = this.crates.filter(c => c.active);
+        const medkits = activeCrates.filter(c => c.isMedkit);
+        const weaponCrates = activeCrates.filter(c => c.crateType === 'weapon');
+        const enemyCacheByTeam = CONFIG.GAME_MODE === 'DM' ? null : {
+            1: aliveEntities.filter(e => e.team !== 1),
+            2: aliveEntities.filter(e => e.team !== 2)
+        };
+        const enemyCacheDm = aliveEntities;
+
         // Round Logic
         if (!this.roundOver && !this.gameOver) {
             if (CONFIG.GAME_MODE === 'DM') {
-                const alive = this.entities.filter(e => !e.dead);
-                if (alive.length <= 1) {
-                    this.endRound(alive.length === 1 ? alive[0] : null);
+                if (aliveEntities.length <= 1) {
+                    this.endRound(aliveEntities.length === 1 ? aliveEntities[0] : null);
                 }
             } else if (CONFIG.GAME_MODE === 'TDM') {
-                const blueAlive = this.entities.filter(e => e.team === 1 && !e.dead).length;
-                const redAlive = this.entities.filter(e => e.team === 2 && !e.dead).length;
+                let blueAlive = 0;
+                let redAlive = 0;
+                for (let i = 0; i < aliveEntities.length; i++) {
+                    const ent = aliveEntities[i];
+                    if (ent.team === 1) blueAlive++;
+                    else if (ent.team === 2) redAlive++;
+                }
                 
                 if (blueAlive === 0 || redAlive === 0) {
                      // Check if game really started (prevent instant win at start tick)
@@ -2016,7 +2075,13 @@ class Game {
         }
         
         this.entities.forEach(ent => {
-            if (ent instanceof Bot) ent.aiUpdate(this.terrain, this.entities, this.crates, this.projectiles, this);
+            if (ent instanceof Bot) {
+                const enemies = CONFIG.GAME_MODE === 'DM'
+                    ? enemyCacheDm
+                    : (ent.team === 1 ? enemyCacheByTeam[1] : enemyCacheByTeam[2]);
+                const cache = { enemies, medkits, weaponCrates };
+                ent.aiUpdate(this.terrain, this.entities, this.projectiles, this, cache);
+            }
             ent.update(this.terrain, this.projectiles, this.crates, this);
         });
         
