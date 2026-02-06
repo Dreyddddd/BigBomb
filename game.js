@@ -177,27 +177,27 @@ class Particle {
 
 class ParticleSystem {
     constructor() {
-        this.pool = []; this.particles = []; this.activeCount = 0;
+        this.pool = []; this.activeParticles = []; this.activeCount = 0;
         for(let i=0; i<CONFIG.MAX_PARTICLES; i++) this.pool.push(new Particle());
     }
     emit(pos, vel, life, color, type) {
         let p = this.pool.find(p => !p.active);
         if (p) {
             p.spawn(pos, vel, life, color, type);
-            if (!this.particles.includes(p)) this.particles.push(p);
+            this.activeParticles.push(p);
             this.activeCount++;
         }
     }
     updateAndDraw(ctx, game) {
-        for(let i=0; i<this.particles.length; i++) {
-            if (this.particles[i].active) {
-                this.particles[i].update(game);
-                if (!this.particles[i].active) {
-                    this.activeCount = Math.max(0, this.activeCount - 1);
-                    continue;
-                }
-                this.particles[i].draw(ctx, game.camera); // Pass camera for culling
+        for (let i = this.activeParticles.length - 1; i >= 0; i--) {
+            const particle = this.activeParticles[i];
+            particle.update(game);
+            if (!particle.active) {
+                this.activeParticles.splice(i, 1);
+                this.activeCount = Math.max(0, this.activeCount - 1);
+                continue;
             }
+            particle.draw(ctx, game.camera); // Pass camera for culling
         }
     }
 }
@@ -1672,6 +1672,9 @@ class Game {
         this.background = new BackgroundGenerator(CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT);
         this.noiseCanvas = document.createElement('canvas');
         this.noiseCtx = this.noiseCanvas.getContext('2d');
+        this.noisePattern = null;
+        this.vignetteCanvas = document.createElement('canvas');
+        this.vignetteCtx = this.vignetteCanvas.getContext('2d');
         
         this.roundOver = false;
 
@@ -1714,9 +1717,12 @@ class Game {
         container.style.height = `${window.innerHeight}px`;
         this.canvas.width = CONFIG.VIEWPORT_WIDTH;
         this.canvas.height = CONFIG.VIEWPORT_HEIGHT;
-        this.noiseCanvas.width = CONFIG.VIEWPORT_WIDTH;
-        this.noiseCanvas.height = CONFIG.VIEWPORT_HEIGHT;
+        this.noiseCanvas.width = 256;
+        this.noiseCanvas.height = 256;
+        this.vignetteCanvas.width = CONFIG.VIEWPORT_WIDTH;
+        this.vignetteCanvas.height = CONFIG.VIEWPORT_HEIGHT;
         this.generateNoise();
+        this.generateVignette();
     }
 
     generateNoise() {
@@ -1731,6 +1737,21 @@ class Game {
             imageData.data[i + 3] = 20;
         }
         this.noiseCtx.putImageData(imageData, 0, 0);
+        this.noisePattern = this.ctx.createPattern(this.noiseCanvas, 'repeat');
+    }
+
+    generateVignette() {
+        const w = this.vignetteCanvas.width;
+        const h = this.vignetteCanvas.height;
+        const gradient = this.vignetteCtx.createRadialGradient(
+            w / 2, h / 2, h * 0.2,
+            w / 2, h / 2, h * 0.7
+        );
+        gradient.addColorStop(0, 'rgba(0,0,0,0)');
+        gradient.addColorStop(1, 'rgba(180, 0, 0, 0.35)');
+        this.vignetteCtx.clearRect(0, 0, w, h);
+        this.vignetteCtx.fillStyle = gradient;
+        this.vignetteCtx.fillRect(0, 0, w, h);
     }
     
     togglePause() {
@@ -2089,18 +2110,14 @@ class Game {
         
         this.ctx.restore();
         if (this.player && this.player.hp <= 30) {
-            const vignette = this.ctx.createRadialGradient(
-                this.canvas.width / 2, this.canvas.height / 2, this.canvas.height * 0.2,
-                this.canvas.width / 2, this.canvas.height / 2, this.canvas.height * 0.7
-            );
-            vignette.addColorStop(0, 'rgba(0,0,0,0)');
-            vignette.addColorStop(1, 'rgba(180, 0, 0, 0.35)');
-            this.ctx.fillStyle = vignette;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.drawImage(this.vignetteCanvas, 0, 0);
         }
-        this.ctx.globalAlpha = 0.04;
-        this.ctx.drawImage(this.noiseCanvas, 0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.globalAlpha = 1;
+        if (this.noisePattern) {
+            this.ctx.globalAlpha = 0.04;
+            this.ctx.fillStyle = this.noisePattern;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.globalAlpha = 1;
+        }
         if (this.flash > 0) { this.ctx.fillStyle = `rgba(255,255,255,${this.flash/20})`; this.ctx.fillRect(0,0,this.canvas.width, this.canvas.height); this.flash--; }
     }
 }
