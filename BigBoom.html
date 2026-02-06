@@ -515,8 +515,8 @@ const CONFIG = {
     CHARGE_RATE: 0.8,
     WORLD_WIDTH: 3500, 
     WORLD_HEIGHT: 2000, 
-    VIEWPORT_WIDTH: 1280, 
-    VIEWPORT_HEIGHT: 720,
+    VIEWPORT_WIDTH: 1920, 
+    VIEWPORT_HEIGHT: 1080,
     BOT_COUNT: 5,
     PROJECTILE_DRAG: 0.998,
     PROJECTILE_GRAVITY: 0.05,
@@ -2146,13 +2146,9 @@ class Game {
     }
 
     resize() {
-        const aspect = CONFIG.VIEWPORT_WIDTH / CONFIG.VIEWPORT_HEIGHT;
-        const windowAspect = window.innerWidth / window.innerHeight;
-        let w, h;
-        if (windowAspect > aspect) { h = window.innerHeight; w = h * aspect; } else { w = window.innerWidth; h = w / aspect; }
         const container = document.getElementById('gameContainer');
-        container.style.width = `${w}px`;
-        container.style.height = `${h}px`;
+        container.style.width = `${window.innerWidth}px`;
+        container.style.height = `${window.innerHeight}px`;
         this.canvas.width = CONFIG.VIEWPORT_WIDTH;
         this.canvas.height = CONFIG.VIEWPORT_HEIGHT;
     }
