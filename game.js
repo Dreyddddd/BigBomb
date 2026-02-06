@@ -1713,6 +1713,12 @@ class Game {
         this.statsVisible = false;
         this.statsDirty = true;
         this.input = { keys: {}, mouse: { screenPos: new Vector2(CONFIG.VIEWPORT_WIDTH/2, CONFIG.VIEWPORT_HEIGHT/2), worldPos: new Vector2(0,0), down: false } };
+        this.aliveEntities = [];
+        this.activeCrates = [];
+        this.medkits = [];
+        this.weaponCrates = [];
+        this.enemyCacheByTeam = { 1: [], 2: [] };
+        this.enemyCacheDm = [];
         
         this.particleSystem = new ParticleSystem();
         this.background = new BackgroundGenerator(CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT);
@@ -1969,8 +1975,12 @@ class Game {
         let win = false; let txt = "";
         
         if (CONFIG.GAME_MODE === 'DM') {
-            let leader = this.entities.sort((a,b)=>b.kills - a.kills)[0];
-            if (leader.kills >= CONFIG.WIN_LIMIT) { win = true; txt = leader.name; }
+            let leader = null;
+            for (let i = 0; i < this.entities.length; i++) {
+                const ent = this.entities[i];
+                if (!leader || ent.kills > leader.kills) leader = ent;
+            }
+            if (leader && leader.kills >= CONFIG.WIN_LIMIT) { win = true; txt = leader.name; }
         } else {
             if (this.scores[1] >= CONFIG.WIN_LIMIT) { win = true; txt = "СИНИЕ"; }
             if (this.scores[2] >= CONFIG.WIN_LIMIT) { win = true; txt = "КРАСНЫЕ"; }
@@ -2031,27 +2041,44 @@ class Game {
         this.input.mouse.worldPos = this.input.mouse.screenPos.add(this.camera);
         this.updateWaveRespawn();
 
-        const aliveEntities = this.entities.filter(e => !e.dead);
-        const activeCrates = this.crates.filter(c => c.active);
-        const medkits = activeCrates.filter(c => c.isMedkit);
-        const weaponCrates = activeCrates.filter(c => c.crateType === 'weapon');
-        const enemyCacheByTeam = CONFIG.GAME_MODE === 'DM' ? null : {
-            1: aliveEntities.filter(e => e.team !== 1),
-            2: aliveEntities.filter(e => e.team !== 2)
-        };
-        const enemyCacheDm = aliveEntities;
+        this.aliveEntities.length = 0;
+        this.activeCrates.length = 0;
+        this.medkits.length = 0;
+        this.weaponCrates.length = 0;
+        for (let i = 0; i < this.entities.length; i++) {
+            const ent = this.entities[i];
+            if (!ent.dead) this.aliveEntities.push(ent);
+        }
+        for (let i = 0; i < this.crates.length; i++) {
+            const crate = this.crates[i];
+            if (!crate.active) continue;
+            this.activeCrates.push(crate);
+            if (crate.isMedkit) this.medkits.push(crate);
+            if (crate.crateType === 'weapon') this.weaponCrates.push(crate);
+        }
+        if (CONFIG.GAME_MODE === 'DM') {
+            this.enemyCacheDm = this.aliveEntities;
+        } else {
+            this.enemyCacheByTeam[1].length = 0;
+            this.enemyCacheByTeam[2].length = 0;
+            for (let i = 0; i < this.aliveEntities.length; i++) {
+                const ent = this.aliveEntities[i];
+                if (ent.team !== 1) this.enemyCacheByTeam[1].push(ent);
+                if (ent.team !== 2) this.enemyCacheByTeam[2].push(ent);
+            }
+        }
 
         // Round Logic
         if (!this.roundOver && !this.gameOver) {
             if (CONFIG.GAME_MODE === 'DM') {
-                if (aliveEntities.length <= 1) {
-                    this.endRound(aliveEntities.length === 1 ? aliveEntities[0] : null);
+                if (this.aliveEntities.length <= 1) {
+                    this.endRound(this.aliveEntities.length === 1 ? this.aliveEntities[0] : null);
                 }
             } else if (CONFIG.GAME_MODE === 'TDM') {
                 let blueAlive = 0;
                 let redAlive = 0;
-                for (let i = 0; i < aliveEntities.length; i++) {
-                    const ent = aliveEntities[i];
+                for (let i = 0; i < this.aliveEntities.length; i++) {
+                    const ent = this.aliveEntities[i];
                     if (ent.team === 1) blueAlive++;
                     else if (ent.team === 2) redAlive++;
                 }
@@ -2075,13 +2102,13 @@ class Game {
             this.player.input.aimTarget = this.input.mouse.worldPos;
         }
         
-        const aiStride = Math.max(1, Math.floor(aliveEntities.length / 12));
+        const aiStride = Math.max(1, Math.floor(this.aliveEntities.length / 12));
         this.entities.forEach(ent => {
             if (ent instanceof Bot) {
                 const enemies = CONFIG.GAME_MODE === 'DM'
-                    ? enemyCacheDm
-                    : (ent.team === 1 ? enemyCacheByTeam[1] : enemyCacheByTeam[2]);
-                const cache = { enemies, medkits, weaponCrates };
+                    ? this.enemyCacheDm
+                    : (ent.team === 1 ? this.enemyCacheByTeam[1] : this.enemyCacheByTeam[2]);
+                const cache = { enemies, medkits: this.medkits, weaponCrates: this.weaponCrates };
                 if (aiStride === 1 || (this.tick + ent.id) % aiStride === 0) {
                     ent.aiUpdate(this.terrain, this.entities, this.projectiles, this, cache);
                     ent.lastAiTick = this.tick;
@@ -2125,7 +2152,8 @@ class Game {
         
         if (this.statsVisible && (this.statsDirty || this.tick % 10 === 0)) {
             let html = '';
-            this.entities.sort((a,b)=>b.kills-a.kills).forEach(e => {
+            const sortedEntities = [...this.entities].sort((a,b)=>b.kills-a.kills);
+            sortedEntities.forEach(e => {
                 let cls = e.team === 1 ? 'row-blue' : (e.team === 2 ? 'row-red' : '');
                 if (e === this.player) cls += ' row-me';
                 html += `<tr class="${cls}"><td>${e.name}</td><td>${e.kills}</td><td>${e.deaths}</td><td>${TEAMS[e.team].name}</td></tr>`;
@@ -2162,13 +2190,21 @@ class Game {
             this.ctx.drawImage(this.terrain.canvas, sx, sy, sw, sh, sx, sy, sw, sh);
         }
 
+        const viewLeft = this.camera.x - 200;
+        const viewRight = this.camera.x + CONFIG.VIEWPORT_WIDTH + 200;
+        const viewTop = this.camera.y - 200;
+        const viewBottom = this.camera.y + CONFIG.VIEWPORT_HEIGHT + 200;
+        const inView = (obj) => obj && obj.pos &&
+            obj.pos.x >= viewLeft && obj.pos.x <= viewRight &&
+            obj.pos.y >= viewTop && obj.pos.y <= viewBottom;
+
         this.bases.forEach(b => b.draw(this.ctx));
         this.flags.forEach(f => f.draw(this.ctx));
-        this.crates.forEach(c => c.draw(this.ctx));
-        this.fires.forEach(f => f.draw(this.ctx));
-        this.effects.forEach(f => f.draw(this.ctx));
-        this.entities.forEach(e => e.draw(this.ctx));
-        this.projectiles.forEach(p => p.draw(this.ctx));
+        this.crates.forEach(c => { if (inView(c)) c.draw(this.ctx); });
+        this.fires.forEach(f => { if (inView(f)) f.draw(this.ctx); });
+        this.effects.forEach(f => { if (inView(f)) f.draw(this.ctx); else if (!f.pos) f.draw(this.ctx); });
+        this.entities.forEach(e => { if (inView(e)) e.draw(this.ctx); });
+        this.projectiles.forEach(p => { if (inView(p)) p.draw(this.ctx); });
         this.particleSystem.updateAndDraw(this.ctx, this);
         
         if (this.gameState === 'PLAYING' && !this.player.dead && !this.paused) {
