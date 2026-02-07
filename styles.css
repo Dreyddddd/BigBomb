@@ -222,16 +222,23 @@ body {
         }
         .inv-slot.active .slot-key { color: #f1c40f; opacity: 1; }
         
-        .slot-name {
-            font-size: 11px;
-            font-weight: 800;
-            text-transform: uppercase;
-            text-align: center;
-            line-height: 1.1;
-            padding: 0 4px;
-            word-wrap: break-word;
-            text-shadow: 1px 1px 0px #000;
-        }
+.slot-name {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    text-align: center;
+    line-height: 1.1;
+    padding: 0 4px;
+    word-wrap: break-word;
+    text-shadow: 1px 1px 0px #000;
+}
+
+.slot-icon {
+    font-size: 20px;
+    line-height: 1;
+    margin-top: 6px;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+}
 
 .screen-overlay {
     position: absolute;

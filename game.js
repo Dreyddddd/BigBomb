@@ -1867,7 +1867,7 @@ class Game {
             }
             if (e.code === 'Escape') this.togglePause();
             this.input.keys[e.code] = true;
-            if (['1','2','3','4','5'].includes(e.key) && this.player) {
+            if (['1','2','3','4','5','6','7'].includes(e.key) && this.player) {
                 if (this.player.switchWeapon(parseInt(e.key)-1)) this.updateInventoryUI();
             }
         });
@@ -2146,12 +2146,29 @@ class Game {
     
     updateInventoryUI() {
         let container = document.getElementById('inventory-container'); container.innerHTML = '';
+        const weaponIcons = {
+            blaster: '🔫',
+            explosive: '💥',
+            bounce: '🧨',
+            drill: '🛠️',
+            energy: '⚡',
+            molotov: '🔥',
+            blackhole: '🌀',
+            shotgun: '🎯',
+            highspeed: '🏹',
+            rapid: '🔫',
+            homing: '🧿',
+            teleport: '🪄',
+            laser: '🔦',
+            nuke: '☢️'
+        };
         for(let i=0; i<CONFIG.MAX_INVENTORY; i++) {
             let div = document.createElement('div'); div.className = 'inv-slot locked';
             if (i < this.player.inventory.length) {
                 let w = this.player.inventory[i];
                 div.className = 'inv-slot' + (this.player.weaponIndex === i ? ' active' : '');
-                div.innerHTML = `<span class="slot-key">${i+1}</span><div class="slot-name" style="color:${w.color}">${w.name}</div>`;
+                const icon = weaponIcons[w.type] || '❓';
+                div.innerHTML = `<span class="slot-key">${i+1}</span><div class="slot-icon" style="color:${w.color}" title="${w.name}">${icon}</div>`;
                 div.onclick = () => { this.player.switchWeapon(i); this.updateInventoryUI(); };
             } else {
                 div.innerHTML = `<span class="slot-key">${i+1}</span>`;
