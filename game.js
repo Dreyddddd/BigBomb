@@ -961,15 +961,15 @@ class Projectile {
         }
 
         if (this.type.type === 'homing') {
-            let nearest = null; let minD = 400;
-            entities.forEach(e => {
-                if(e.id !== this.ownerId && !e.dead) {
-                    if (CONFIG.GAME_MODE === 'DM' || e.team !== this.team) {
-                        let d = distSq(this.pos, e.pos);
-                        if(d < minD * minD) { minD = Math.sqrt(d); nearest = e; }
-                    }
-                }
-            });
+            let nearest = null;
+            let minDSq = 400 * 400;
+            for (let i = 0; i < entities.length; i++) {
+                const e = entities[i];
+                if (e.id === this.ownerId || e.dead) continue;
+                if (CONFIG.GAME_MODE !== 'DM' && e.team === this.team) continue;
+                const d = distSq(this.pos, e.pos);
+                if (d < minDSq) { minDSq = d; nearest = e; }
+            }
             if(nearest) {
                 let dir = nearest.pos.sub(this.pos).normalize().mult(0.3);
                 this.vel = this.vel.add(dir);
@@ -984,7 +984,7 @@ class Projectile {
              this.vel.y += CONFIG.PROJECTILE_GRAVITY;
         } else if (this.type.type === 'blackhole') {
              this.vel = this.vel.mult(0.98); 
-             if (this.vel.mag() < 0.3) { this.explode(terrain, particleSystem, entities, game); return; }
+             if (this.vel.mag() < 0.3) { this.explode(terrain, particleSystem, game); return; }
         } else if (this.type.type === 'highspeed') {
              this.vel.y += 0.01; 
         }
@@ -998,7 +998,8 @@ class Projectile {
         // Check against terrain first to prevent shooting through walls
         let hitWall = terrain.raycast(this.pos, nextPos);
         
-        for (let ent of entities) {
+        for (let i = 0; i < entities.length; i++) {
+            const ent = entities[i];
             if (ent.dead) continue;
             if (ent.id === this.ownerId && distSq(this.pos, ent.pos) < 20 * 20) continue; 
             if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team) continue;
@@ -1019,7 +1020,7 @@ class Projectile {
 
         if (hitEntity && !hitWall) {
              this.pos = hitEntity.pos.clone().sub(this.vel.normalize().mult(5)); // Visual fix
-             this.explode(terrain, particleSystem, entities, game);
+             this.explode(terrain, particleSystem, game);
              return;
         }
         
@@ -1035,7 +1036,7 @@ class Projectile {
                  this.vel = this.vel.mult(0.96); 
                  this.pos = nextPos;
                  if(Math.random() < 0.1) particleSystem.emit(this.pos.clone(), new Vector2((Math.random()-0.5)*2, -2), 10, '#fff', 'spark');
-                 if (this.vel.mag() < 0.5) this.explode(terrain, particleSystem, entities, game);
+                 if (this.vel.mag() < 0.5) this.explode(terrain, particleSystem, game);
                  return;
              } 
              if (this.type.type === 'teleport') {
@@ -1061,14 +1062,14 @@ class Projectile {
                  
                  // FIX: Stop and Explode if too slow (prevents sliding through ground)
                  if (this.vel.mag() < 0.5 && this.type.type === 'bounce') {
-                     this.explode(terrain, particleSystem, entities, game);
+                     this.explode(terrain, particleSystem, game);
                      return;
                  }
                  
                  if (this.type.type !== 'bounce') this.bounces--;
              } else {
                  this.pos = nextPos;
-                 this.explode(terrain, particleSystem, entities, game);
+                 this.explode(terrain, particleSystem, game);
              }
         } else {
              this.pos = nextPos;
@@ -1079,7 +1080,7 @@ class Projectile {
         }
     }
 
-    explode(terrain, particleSystem, entities, game) {
+    explode(terrain, particleSystem, game) {
         this.active = false;
         if (this.pos.y > CONFIG.WORLD_HEIGHT) return;
 
@@ -1108,24 +1109,26 @@ class Projectile {
 
         if (this.type.type !== 'laser') terrain.destroy(this.pos.x, this.pos.y, this.type.radius, this.type.type);
         
-        entities.forEach(ent => {
-            if (!ent.dead) {
-                if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team && ent.id !== this.ownerId) return;
+        const dmgRadius = this.type.radius + 20;
+        const dmgRadiusSq = dmgRadius * dmgRadius;
+        let attacker = null;
+        for (let i = 0; i < game.entities.length; i++) {
+            const ent = game.entities[i];
+            if (ent.id === this.ownerId) attacker = ent;
+            if (ent.dead) continue;
+            if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team && ent.id !== this.ownerId) continue;
+            const dSq = distSq(this.pos, ent.pos);
+            if (dSq < dmgRadiusSq) {
+                const d = Math.sqrt(dSq);
+                let damage = this.type.damage * (1 - d / dmgRadius);
+                if (attacker && attacker.damageMultiplier) damage *= attacker.damageMultiplier;
 
-                let d = this.pos.dist(ent.pos);
-                let dmgRadius = this.type.radius + 20; 
-                if (d < dmgRadius) {
-                    let damage = this.type.damage * (1 - d / dmgRadius);
-                    let attacker = game.entities.find(e => e.id === this.ownerId);
-                    if (attacker && attacker.damageMultiplier) damage *= attacker.damageMultiplier;
-
-                    if(this.type.type === 'laser') damage = this.type.damage; 
-                    ent.takeDamage(damage < 0 ? 0 : damage, this.ownerId, game);
-                    let pushDir = ent.pos.sub(this.pos).normalize();
-                    ent.vel = ent.vel.add(pushDir.mult(4)); 
-                }
+                if(this.type.type === 'laser') damage = this.type.damage; 
+                ent.takeDamage(damage < 0 ? 0 : damage, this.ownerId, game);
+                let pushDir = ent.pos.sub(this.pos).normalize();
+                ent.vel = ent.vel.add(pushDir.mult(4)); 
             }
-        });
+        }
 
         let count = 10; let color = this.type.color; let type = 'normal';
         if (this.type.type === 'energy' || this.type.type === 'blaster') { color = '#00ffcc'; type = 'glow'; count = 15; }
@@ -2314,7 +2317,7 @@ class Game {
         this.crates.forEach(c => c.update(this.terrain));
         this.flags.forEach(f => f.update(this.terrain, this.entities, this));
         for (let i = this.projectiles.length - 1; i >= 0; i--) { 
-            let p = this.projectiles[i]; p.update(this.terrain, this.particleSystem, this.entities, this); 
+            let p = this.projectiles[i]; p.update(this.terrain, this.particleSystem, this.aliveEntities, this); 
             if (!p.active) this.projectiles.splice(i, 1); 
         }
         this.fires = this.fires.filter(f => f.update(this));
