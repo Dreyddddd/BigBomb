@@ -56,7 +56,7 @@
                 </tbody>
             </table>
         </div>
-        <div style="margin-top: 20px; color: #888;">Удерживайте TAB</div>
+        <div style="margin-top: 20px; color: #888;">TAB - статистика</div>
     </div>
 
     <!-- MAIN MENU -->
@@ -64,90 +64,71 @@
         <h1 class="title-text big-boom-title">
             <span class="word-big">BIG</span> <span class="word-boom">BOOM</span>
         </h1>
-        <input type="text" id="nickname-input" placeholder="ВВЕДИ НИКНЕЙМ" maxlength="12">
-        <div class="settings-group">
-            <label>Цвет персонажа:</label>
-            <input type="color" id="player-color-input" value="#3498db">
-        </div>
+        <input type="text" id="nickname-input" placeholder="ВВЕДИ НИКНЕЙМ" maxlength="12" style="display:none;">
+        <input type="color" id="player-color-input" value="#3498db" style="display:none;">
         <div class="btn-group-col">
-            <button class="btn-main" onclick="startGame()">В БОЙ</button>
-            <button class="btn-main btn-sec" onclick="openSettings('MENU')">НАСТРОЙКИ</button>
+            <button class="btn-main" onclick="openLobby('MENU')">ЛОББИ</button>
         </div>
     </div>
 
-    <!-- SETTINGS SCREEN -->
-    <div id="settings-screen" class="screen-overlay">
-        <h1 class="title-text" style="font-size: 60px;">НАСТРОЙКИ</h1>
-        
-        <div class="settings-group">
-            <label>Режим Игры:</label>
-            <select id="game-mode-select" onchange="updateSettingsUI()">
-                <option value="DM">Каждый сам за себя</option>
-                <option value="TDM">Командный Бой</option>
-                <option value="CTF">Захват Флага</option>
-            </select>
+    <!-- LOBBY SCREEN -->
+    <div id="lobby-screen" class="screen-overlay">
+        <h1 class="title-text" style="font-size: 60px;">ЛОББИ</h1>
+        <div class="lobby-grid">
+            <div class="lobby-panel">
+                <div class="settings-group">
+                    <label>Никнейм:</label>
+                    <input type="text" id="lobby-nickname-input" placeholder="ВВЕДИ НИКНЕЙМ" maxlength="12">
+                </div>
+                <div class="settings-group">
+                    <label>Режим Игры:</label>
+                    <select id="game-mode-select" onchange="updateLobbyUI()">
+                        <option value="DM">Каждый сам за себя</option>
+                        <option value="TDM">Командный Бой</option>
+                        <option value="CTF">Захват Флага</option>
+                    </select>
+                </div>
+                <div class="settings-group">
+                    <label>Ботов: <span id="bot-count-val" style="color:#f1c40f">5</span></label>
+                    <input type="range" id="bot-count-input" min="1" max="20" value="5" oninput="updateLobbyUI()">
+                </div>
+                <div class="settings-group">
+                    <label>Цель Победы: <span id="frag-limit-val" style="color:#f1c40f">10</span></label>
+                    <input type="range" id="frag-limit-input" min="1" max="50" value="10" oninput="updateLobbyUI()">
+                </div>
+            </div>
+            <div class="lobby-panel">
+                <canvas id="lobby-preview" width="160" height="160"></canvas>
+                <div class="settings-group compact">
+                    <label>Цвет персонажа:</label>
+                    <input type="color" id="player-color-input-settings" value="#3498db">
+                </div>
+                <div class="settings-group compact">
+                    <label>Цвет акцента:</label>
+                    <input type="color" id="player-accent-input" value="#f1c40f">
+                </div>
+                <div class="settings-group compact">
+                    <label>Шлем:</label>
+                    <select id="player-helmet-select"></select>
+                </div>
+                <div class="settings-group compact">
+                    <label>Одежда:</label>
+                    <select id="player-outfit-select"></select>
+                </div>
+                <div class="settings-group compact">
+                    <label>Обувь:</label>
+                    <select id="player-boots-select"></select>
+                </div>
+                <div class="settings-group compact">
+                    <label>Аксессуар:</label>
+                    <select id="player-accessory-select"></select>
+                </div>
+            </div>
         </div>
-
-        <div class="settings-group">
-            <label>Ботов: <span id="bot-count-val" style="color:#f1c40f">5</span></label>
-            <input type="range" id="bot-count-input" min="1" max="20" value="5" oninput="updateSettingsUI()">
+        <div class="btn-group">
+            <button class="btn-main" onclick="startGameFromLobby()">В БОЙ</button>
+            <button class="btn-main btn-sec" onclick="closeLobby()">НАЗАД</button>
         </div>
-
-        <div class="settings-group">
-            <label>Цель Победы: <span id="frag-limit-val" style="color:#f1c40f">10</span></label>
-            <input type="range" id="frag-limit-input" min="1" max="50" value="10" oninput="updateSettingsUI()">
-        </div>
-
-        <div class="settings-group">
-            <label>Шлем:</label>
-            <select id="player-helmet-select">
-                <option value="none">Без шлема</option>
-                <option value="visor">Визор</option>
-                <option value="tactical">Тактический</option>
-                <option value="cap">Кепка</option>
-            </select>
-        </div>
-
-        <div class="settings-group">
-            <label>Одежда:</label>
-            <select id="player-outfit-select">
-                <option value="standard">Классика</option>
-                <option value="tactical">Тактик</option>
-                <option value="armor">Броня</option>
-                <option value="hoodie">Худи</option>
-            </select>
-        </div>
-
-        <div class="settings-group">
-            <label>Обувь:</label>
-            <select id="player-boots-select">
-                <option value="standard">Обычная</option>
-                <option value="combat">Берцы</option>
-                <option value="sneakers">Кроссы</option>
-            </select>
-        </div>
-
-        <div class="settings-group">
-            <label>Аксессуар:</label>
-            <select id="player-accessory-select">
-                <option value="none">Нет</option>
-                <option value="cape">Плащ</option>
-                <option value="backpack">Рюкзак</option>
-                <option value="antenna">Антенна</option>
-            </select>
-        </div>
-
-        <div class="settings-group">
-            <label>Цвет акцента:</label>
-            <input type="color" id="player-accent-input" value="#f1c40f">
-        </div>
-
-        <div class="settings-group">
-            <label>Цвет персонажа:</label>
-            <input type="color" id="player-color-input-settings" value="#3498db">
-        </div>
-
-        <button class="btn-main" onclick="closeSettings()">НАЗАД</button>
     </div>
 
     <!-- PAUSE MENU -->
@@ -156,7 +137,7 @@
         <div class="btn-group-col">
             <button class="btn-main" onclick="togglePause()">ПРОДОЛЖИТЬ</button>
             <button class="btn-main btn-sec" onclick="restartGame()">ЗАНОВО</button>
-            <button class="btn-main btn-sec" onclick="openSettings('PAUSE')">НАСТРОЙКИ</button>
+            <button class="btn-main btn-sec" onclick="openLobby('PAUSE')">ЛОББИ</button>
             <button class="btn-main btn-sec" onclick="goToMenu()">В МЕНЮ</button>
         </div>
     </div>
