@@ -1448,6 +1448,7 @@ class Character {
         ctx.save();
         ctx.translate(this.pos.x, this.pos.y);
 
+        const aimFacingRight = (this.input.aimTarget.x - this.pos.x) >= 0;
         this.buffs.forEach(buff => {
             if (buff.type === 'shield') {
                 ctx.save();
@@ -1484,7 +1485,6 @@ class Character {
         ctx.fillStyle = '#333'; ctx.fillRect(-15, -35, 30, 4);
         ctx.fillStyle = this.hp > 50 ? '#2ecc71' : '#e74c3c'; ctx.fillRect(-15, -35, 30 * (this.hp / 100), 4);
 
-        const aimFacingRight = (this.input.aimTarget.x - this.pos.x) >= 0;
         if (!aimFacingRight) ctx.scale(-1, 1);
         const isMoving = Math.abs(this.vel.x) > 0.1;
         const walkCycle = isMoving ? Math.sin(this.animTimer * 2) * 4 : 0;
