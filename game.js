@@ -1550,6 +1550,7 @@ class Character {
         
         let aimX = this.input.aimTarget.x - this.pos.x;
         let aimY = this.input.aimTarget.y - this.pos.y;
+        this.facingRight = aimX >= 0;
         if (!this.facingRight) aimX = -aimX;
         let angle = Math.atan2(aimY, aimX);
 
