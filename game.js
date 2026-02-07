@@ -1861,9 +1861,15 @@ class Game {
 
         window.addEventListener('keydown', e => {
             if (e.code === 'Tab') {
-                document.getElementById('stats-overlay').style.display = 'flex';
-                this.statsVisible = true;
-                this.statsDirty = true;
+                e.preventDefault();
+                if (this.statsVisible) {
+                    document.getElementById('stats-overlay').style.display = 'none';
+                    this.statsVisible = false;
+                } else {
+                    document.getElementById('stats-overlay').style.display = 'flex';
+                    this.statsVisible = true;
+                    this.statsDirty = true;
+                }
             }
             if (e.code === 'Escape') this.togglePause();
             this.input.keys[e.code] = true;
@@ -1872,10 +1878,7 @@ class Game {
             }
         });
         window.addEventListener('keyup', e => {
-            if (e.code === 'Tab') {
-                document.getElementById('stats-overlay').style.display = 'none';
-                this.statsVisible = false;
-            }
+            if (e.code === 'Tab') e.preventDefault();
             this.input.keys[e.code] = false;
         });
         this.canvas.addEventListener('mousedown', () => this.input.mouse.down = true);
@@ -2014,7 +2017,7 @@ class Game {
         document.getElementById('pause-menu').style.display = 'none';
         document.getElementById('ui-layer').style.display = 'none';
         document.getElementById('start-screen').style.display = 'flex';
-        document.getElementById('settings-screen').style.display = 'none';
+        document.getElementById('lobby-screen').style.display = 'none';
     }
 
     spawnCrate() {
@@ -2147,28 +2150,28 @@ class Game {
     updateInventoryUI() {
         let container = document.getElementById('inventory-container'); container.innerHTML = '';
         const weaponIcons = {
-            blaster: '🔫',
-            explosive: '💥',
-            bounce: '🧨',
-            drill: '🛠️',
-            energy: '⚡',
-            molotov: '🔥',
-            blackhole: '🌀',
-            shotgun: '🎯',
-            highspeed: '🏹',
-            rapid: '🔫',
-            homing: '🧿',
-            teleport: '🪄',
-            laser: '🔦',
-            nuke: '☢️'
+            blaster: `<svg viewBox="0 0 64 64"><rect x="8" y="26" width="32" height="12" rx="4"/><rect x="40" y="28" width="14" height="8" rx="2"/><rect x="14" y="38" width="8" height="10" rx="2"/><circle cx="48" cy="32" r="3"/></svg>`,
+            explosive: `<svg viewBox="0 0 64 64"><circle cx="28" cy="36" r="12"/><rect x="36" y="18" width="16" height="6" rx="2"/><rect x="50" y="16" width="6" height="10" rx="2"/></svg>`,
+            bounce: `<svg viewBox="0 0 64 64"><circle cx="28" cy="36" r="10"/><path d="M40 24h12l-6 8z"/><rect x="18" y="46" width="20" height="4" rx="2"/></svg>`,
+            drill: `<svg viewBox="0 0 64 64"><rect x="10" y="28" width="24" height="10" rx="3"/><polygon points="34,28 54,32 34,38"/><rect x="12" y="40" width="8" height="8" rx="2"/></svg>`,
+            energy: `<svg viewBox="0 0 64 64"><rect x="10" y="26" width="28" height="12" rx="4"/><polygon points="34,24 54,32 34,40"/><circle cx="20" cy="32" r="3"/></svg>`,
+            molotov: `<svg viewBox="0 0 64 64"><rect x="28" y="12" width="8" height="10" rx="2"/><circle cx="32" cy="36" r="12"/><path d="M28 18h8l-4 10z"/></svg>`,
+            blackhole: `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="16"/><circle cx="32" cy="32" r="6"/><path d="M10 32h10M44 32h10" /></svg>`,
+            shotgun: `<svg viewBox="0 0 64 64"><rect x="8" y="28" width="36" height="6" rx="3"/><rect x="8" y="36" width="30" height="6" rx="3"/><rect x="4" y="30" width="8" height="10" rx="3"/></svg>`,
+            highspeed: `<svg viewBox="0 0 64 64"><rect x="6" y="30" width="40" height="4" rx="2"/><rect x="14" y="22" width="18" height="6" rx="2"/><rect x="4" y="34" width="10" height="8" rx="2"/></svg>`,
+            rapid: `<svg viewBox="0 0 64 64"><rect x="8" y="24" width="30" height="16" rx="4"/><rect x="38" y="26" width="16" height="12" rx="3"/><rect x="14" y="40" width="8" height="8" rx="2"/></svg>`,
+            homing: `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="12"/><circle cx="32" cy="32" r="4"/><path d="M32 14v6M32 44v6M14 32h6M44 32h6"/></svg>`,
+            teleport: `<svg viewBox="0 0 64 64"><rect x="22" y="28" width="20" height="8" rx="4"/><circle cx="32" cy="20" r="6"/><circle cx="32" cy="44" r="6"/></svg>`,
+            laser: `<svg viewBox="0 0 64 64"><rect x="8" y="28" width="40" height="8" rx="4"/><rect x="48" y="30" width="8" height="4" rx="2"/><rect x="14" y="24" width="18" height="4" rx="2"/></svg>`,
+            nuke: `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="14"/><circle cx="32" cy="32" r="5"/><path d="M32 18v8M18 32h8M38 32h8M32 38v8"/></svg>`
         };
         for(let i=0; i<CONFIG.MAX_INVENTORY; i++) {
             let div = document.createElement('div'); div.className = 'inv-slot locked';
             if (i < this.player.inventory.length) {
                 let w = this.player.inventory[i];
                 div.className = 'inv-slot' + (this.player.weaponIndex === i ? ' active' : '');
-                const icon = weaponIcons[w.type] || '❓';
-                div.innerHTML = `<span class="slot-key">${i+1}</span><div class="slot-icon" style="color:${w.color}" title="${w.name}">${icon}</div>`;
+                const icon = weaponIcons[w.type] || weaponIcons.blaster;
+                div.innerHTML = `<span class="slot-key">${i+1}</span><div class="slot-icon" style="color:${w.color}">${icon}</div>`;
                 div.onclick = () => { this.player.switchWeapon(i); this.updateInventoryUI(); };
             } else {
                 div.innerHTML = `<span class="slot-key">${i+1}</span>`;
@@ -2397,11 +2400,11 @@ function togglePause() { gameInstance.togglePause(); }
 
 let previousScreen = 'MENU';
 
-function openSettings(fromScreen) {
+function openLobby(fromScreen) {
     previousScreen = fromScreen;
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('pause-menu').style.display = 'none';
-    document.getElementById('settings-screen').style.display = 'flex';
+    document.getElementById('lobby-screen').style.display = 'flex';
     document.getElementById('bot-count-input').value = CONFIG.BOT_COUNT;
     document.getElementById('bot-count-val').innerText = CONFIG.BOT_COUNT;
     document.getElementById('frag-limit-input').value = CONFIG.WIN_LIMIT; 
@@ -2414,15 +2417,19 @@ function openSettings(fromScreen) {
     const accentInput = document.getElementById('player-accent-input');
     const colorInputSettings = document.getElementById('player-color-input-settings');
     const colorInputStart = document.getElementById('player-color-input');
+    const lobbyName = document.getElementById('lobby-nickname-input');
+    if (lobbyName) lobbyName.value = document.getElementById('nickname-input')?.value || '';
     if (helmetSelect) helmetSelect.value = cosmetics.helmet;
     if (outfitSelect) outfitSelect.value = cosmetics.outfit;
     if (bootsSelect) bootsSelect.value = cosmetics.boots;
     if (accessorySelect) accessorySelect.value = cosmetics.accessory;
     if (accentInput) accentInput.value = cosmetics.accent;
     if (colorInputSettings) colorInputSettings.value = colorInputStart?.value || '#3498db';
+    populateCosmeticsSelects();
+    updateLobbyPreview();
 }
 
-function updateSettingsUI() {
+function updateLobbyUI() {
     const bots = parseInt(document.getElementById('bot-count-input').value);
     const frags = parseInt(document.getElementById('frag-limit-input').value);
     document.getElementById('bot-count-val').innerText = bots;
@@ -2432,7 +2439,7 @@ function updateSettingsUI() {
     CONFIG.GAME_MODE = document.getElementById('game-mode-select').value;
 }
 
-function closeSettings() {
+function closeLobby() {
     if (gameInstance) {
         gameInstance.playerCosmetics = getPlayerCosmeticsFromUI(gameInstance.playerCosmetics);
         const colorInputSettings = document.getElementById('player-color-input-settings');
@@ -2441,7 +2448,7 @@ function closeSettings() {
             colorInputStart.value = colorInputSettings.value;
         }
     }
-    document.getElementById('settings-screen').style.display = 'none';
+    document.getElementById('lobby-screen').style.display = 'none';
     if (previousScreen === 'MENU') {
         document.getElementById('start-screen').style.display = 'flex';
     } else if (previousScreen === 'PAUSE') {
@@ -2469,3 +2476,49 @@ function getPlayerColorFromUI() {
     const startInput = document.getElementById('player-color-input');
     return settingsInput?.value || startInput?.value || '#3498db';
 }
+
+function startGameFromLobby() {
+    const lobbyName = document.getElementById('lobby-nickname-input');
+    const startName = document.getElementById('nickname-input');
+    if (lobbyName && startName) startName.value = lobbyName.value.trim();
+    closeLobby();
+    startGame();
+}
+
+function populateCosmeticsSelects() {
+    const helmetSelect = document.getElementById('player-helmet-select');
+    const outfitSelect = document.getElementById('player-outfit-select');
+    const bootsSelect = document.getElementById('player-boots-select');
+    const accessorySelect = document.getElementById('player-accessory-select');
+    if (helmetSelect && helmetSelect.options.length === 0) {
+        COSMETICS.helmets.forEach(opt => helmetSelect.add(new Option(opt.label, opt.id)));
+    }
+    if (outfitSelect && outfitSelect.options.length === 0) {
+        COSMETICS.outfits.forEach(opt => outfitSelect.add(new Option(opt.label, opt.id)));
+    }
+    if (bootsSelect && bootsSelect.options.length === 0) {
+        COSMETICS.boots.forEach(opt => bootsSelect.add(new Option(opt.label, opt.id)));
+    }
+    if (accessorySelect && accessorySelect.options.length === 0) {
+        COSMETICS.accessories.forEach(opt => accessorySelect.add(new Option(opt.label, opt.id)));
+    }
+}
+
+function updateLobbyPreview() {
+    const canvas = document.getElementById('lobby-preview');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const color = getPlayerColorFromUI();
+    const cosmetics = getPlayerCosmeticsFromUI(gameInstance?.playerCosmetics);
+    const preview = new Character(canvas.width / 2, canvas.height / 2 + 20, -1, color, 'PREVIEW', 0, cosmetics);
+    preview.input.aimTarget = new Vector2(preview.pos.x + 30, preview.pos.y - 10);
+    preview.animTimer = 0.5;
+    preview.draw(ctx);
+}
+
+document.addEventListener('input', (event) => {
+    if (event.target && event.target.closest('#lobby-screen')) {
+        updateLobbyPreview();
+    }
+});
