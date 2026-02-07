@@ -205,7 +205,7 @@ class Particle {
         if (game.blackHoles && game.blackHoles.length) {
             for (let i = 0; i < game.blackHoles.length; i++) {
                 const blackHole = game.blackHoles[i];
-                if (this.pos.dist(blackHole.pos) < 250) {
+                if (distSq(this.pos, blackHole.pos) < 250 * 250) {
                     this.vel = this.vel.add(blackHole.pos.sub(this.pos).normalize().mult(1.5));
                 }
             }
@@ -371,8 +371,9 @@ class BlackHoleEffect {
         this.life--; this.angle += 0.2;
         game.entities.forEach(e => {
             if (!e.dead) {
-                let dist = this.pos.dist(e.pos);
-                if (dist < 400) {
+                const distSquared = distSq(this.pos, e.pos);
+                if (distSquared < 400 * 400) {
+                    const dist = Math.sqrt(distSquared);
                     let force = 150 / (dist + 10);
                     let pull = this.pos.sub(e.pos).normalize().mult(force);
                     e.vel = e.vel.add(pull);
@@ -380,7 +381,9 @@ class BlackHoleEffect {
             }
         });
         game.crates.forEach(c => {
-            if(this.pos.dist(c.pos) < 400) c.pos = c.pos.add(this.pos.sub(c.pos).normalize().mult(5));
+            if (distSq(this.pos, c.pos) < 400 * 400) {
+                c.pos = c.pos.add(this.pos.sub(c.pos).normalize().mult(5));
+            }
         });
         if (game.particleSystem.activeCount < CONFIG.MAX_PARTICLES) {
             for(let i=0; i<2; i++) {
@@ -448,7 +451,11 @@ class Crate {
             if (terrain.isSolid(this.pos.x, this.pos.y + this.size/2)) {
                 this.grounded = true;
                 this.yVel = 0;
-                while(terrain.isSolid(this.pos.x, this.pos.y + this.size/2)) this.pos.y--;
+                let safety = 0;
+                while (terrain.isSolid(this.pos.x, this.pos.y + this.size/2) && safety < 200) {
+                    this.pos.y--;
+                    safety++;
+                }
             }
         } else if (!terrain.isSolid(this.pos.x, this.pos.y + this.size/2 + 2)) {
             this.grounded = false;
@@ -1385,7 +1392,13 @@ class Character {
         if (this.vel.y < 0 && terrain.isSolid(this.pos.x, nextY - hh)) { this.vel.y = 0; nextY = this.pos.y; }
         if (this.vel.y >= 0 && terrain.isSolid(this.pos.x, nextY + hh)) {
             this.grounded = true; this.vel.y = 0;
-            let t = nextY; while(terrain.isSolid(this.pos.x, t + hh)) t--; nextY = t;
+            let t = nextY;
+            let safety = 0;
+            while (terrain.isSolid(this.pos.x, t + hh) && safety < 400) {
+                t--;
+                safety++;
+            }
+            nextY = t;
         } else { this.grounded = false; }
         this.pos.y = nextY;
         
