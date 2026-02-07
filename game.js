@@ -202,11 +202,14 @@ class Particle {
             return this.active;
         }
 
-        game.effects.forEach(e => {
-            if(e instanceof BlackHoleEffect && this.pos.dist(e.pos) < 250) {
-                this.vel = this.vel.add(e.pos.sub(this.pos).normalize().mult(1.5));
+        if (game.blackHoles && game.blackHoles.length) {
+            for (let i = 0; i < game.blackHoles.length; i++) {
+                const blackHole = game.blackHoles[i];
+                if (this.pos.dist(blackHole.pos) < 250) {
+                    this.vel = this.vel.add(blackHole.pos.sub(this.pos).normalize().mult(1.5));
+                }
             }
-        });
+        }
         this.pos = this.pos.add(this.vel);
         if (this.type === 'fire') { this.vel.y -= 0.03; this.vel.x *= 0.95; this.size *= 0.95; }
         else if (this.type === 'spark') { this.vel.y += 0.1; }
@@ -237,16 +240,22 @@ class Particle {
 
 class ParticleSystem {
     constructor() {
-        this.pool = []; this.activeParticles = []; this.activeCount = 0;
-        for(let i=0; i<CONFIG.MAX_PARTICLES; i++) this.pool.push(new Particle());
+        this.pool = [];
+        this.freeParticles = [];
+        this.activeParticles = [];
+        this.activeCount = 0;
+        for(let i=0; i<CONFIG.MAX_PARTICLES; i++) {
+            const particle = new Particle();
+            this.pool.push(particle);
+            this.freeParticles.push(particle);
+        }
     }
     emit(pos, vel, life, color, type) {
-        let p = this.pool.find(p => !p.active);
-        if (p) {
-            p.spawn(pos, vel, life, color, type);
-            this.activeParticles.push(p);
-            this.activeCount++;
-        }
+        if (this.freeParticles.length === 0) return;
+        const particle = this.freeParticles.pop();
+        particle.spawn(pos, vel, life, color, type);
+        this.activeParticles.push(particle);
+        this.activeCount++;
     }
     updateAndDraw(ctx, game) {
         for (let i = this.activeParticles.length - 1; i >= 0; i--) {
@@ -255,6 +264,7 @@ class ParticleSystem {
             if (!particle.active) {
                 this.activeParticles.splice(i, 1);
                 this.activeCount = Math.max(0, this.activeCount - 1);
+                this.freeParticles.push(particle);
                 continue;
             }
             particle.draw(ctx, game.camera); // Pass camera for culling
@@ -1851,6 +1861,7 @@ class Game {
         this.playerCosmetics = defaultCosmetics();
         this.botCosmetics = new Map();
         this.botCosmeticsInitialized = false;
+        this.blackHoles = [];
         
         this.particleSystem = new ParticleSystem();
         this.background = new BackgroundGenerator(CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT);
@@ -2285,6 +2296,11 @@ class Game {
         }
         this.fires = this.fires.filter(f => f.update(this));
         this.effects = this.effects.filter(f => f.update(this));
+        this.blackHoles.length = 0;
+        for (let i = 0; i < this.effects.length; i++) {
+            const effect = this.effects[i];
+            if (effect instanceof BlackHoleEffect) this.blackHoles.push(effect);
+        }
         
         // CAMERA LOGIC WITH MOUSE OFFSET
         let target = this.cameraTarget || this.player;
