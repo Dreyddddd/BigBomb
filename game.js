@@ -1343,8 +1343,9 @@ class Character {
 
         let targetSpeed = 0;
         let maxSpeed = CONFIG.MAX_SPEED * this.speedMultiplier;
-        if (this.input.left) { targetSpeed = -maxSpeed; this.facingRight = false; }
-        if (this.input.right) { targetSpeed = maxSpeed; this.facingRight = true; }
+        if (this.input.left) { targetSpeed = -maxSpeed; }
+        if (this.input.right) { targetSpeed = maxSpeed; }
+        this.facingRight = (this.input.aimTarget.x - this.pos.x) >= 0;
         let accel = this.grounded ? CONFIG.ACCELERATION : CONFIG.ACCELERATION * 0.5;
         this.vel.x += (targetSpeed - this.vel.x) * accel;
         if (Math.abs(this.vel.x) < 0.05) this.vel.x = 0;
@@ -1449,8 +1450,8 @@ class Character {
             if (buff.type === 'speed') {
                 ctx.fillStyle = 'rgba(255,255,255,0.3)';
                 if (Math.abs(this.vel.x) > 0.5) {
-                   ctx.fillRect(this.facingRight ? -20 : 10, -10, 15, 2);
-                   ctx.fillRect(this.facingRight ? -25 : 15, 0, 10, 2);
+                   ctx.fillRect(aimFacingRight ? -20 : 10, -10, 15, 2);
+                   ctx.fillRect(aimFacingRight ? -25 : 15, 0, 10, 2);
                 }
             }
         });
@@ -1460,7 +1461,8 @@ class Character {
         ctx.fillStyle = '#333'; ctx.fillRect(-15, -35, 30, 4);
         ctx.fillStyle = this.hp > 50 ? '#2ecc71' : '#e74c3c'; ctx.fillRect(-15, -35, 30 * (this.hp / 100), 4);
 
-        if (!this.facingRight) ctx.scale(-1, 1);
+        const aimFacingRight = (this.input.aimTarget.x - this.pos.x) >= 0;
+        if (!aimFacingRight) ctx.scale(-1, 1);
         const isMoving = Math.abs(this.vel.x) > 0.1;
         const walkCycle = isMoving ? Math.sin(this.animTimer * 2) * 4 : 0;
         const breathe = Math.sin(this.animTimer * 0.5);
