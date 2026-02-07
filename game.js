@@ -942,6 +942,7 @@ class Projectile {
         this.bounces = type.bounces || 0;
         if (type.type === 'bounce') this.timer = 180;
         this.trail = []; 
+        this.lastDrillDestroyTick = -999;
     }
 
     update(terrain, particleSystem, entities, game) {
@@ -964,8 +965,8 @@ class Projectile {
             entities.forEach(e => {
                 if(e.id !== this.ownerId && !e.dead) {
                     if (CONFIG.GAME_MODE === 'DM' || e.team !== this.team) {
-                        let d = this.pos.dist(e.pos);
-                        if(d < minD) { minD = d; nearest = e; }
+                        let d = distSq(this.pos, e.pos);
+                        if(d < minD * minD) { minD = Math.sqrt(d); nearest = e; }
                     }
                 }
             });
@@ -999,16 +1000,16 @@ class Projectile {
         
         for (let ent of entities) {
             if (ent.dead) continue;
-            if (ent.id === this.ownerId && this.pos.dist(ent.pos) < 20) continue; 
+            if (ent.id === this.ownerId && distSq(this.pos, ent.pos) < 20 * 20) continue; 
             if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team) continue;
             
             // Check distance from entity center to the movement segment
-            let distToTrajectory = distToSegment(ent.pos, this.pos, nextPos);
+            let distToTrajectory = distToSegmentSquared(ent.pos, this.pos, nextPos);
             let hitRadius = (this.type.type === 'laser' ? 10 : 15); // Increased laser hit radius
             
-            if (distToTrajectory < hitRadius) {
+            if (distToTrajectory < hitRadius * hitRadius) {
                  // Check if this hit is closer than previous hits
-                 let d = this.pos.dist(ent.pos);
+                 let d = distSq(this.pos, ent.pos);
                  if (d < closestDist) {
                      closestDist = d;
                      hitEntity = ent;
@@ -1025,9 +1026,12 @@ class Projectile {
         // If we didn't hit an entity, check terrain normally or advanced logic
         if (hitWall || terrain.isSolid(nextPos.x, nextPos.y)) {
              this.pos = nextPos;
-             if (this.type.type === 'drill') {
+            if (this.type.type === 'drill') {
                  // Drill logic
-                 terrain.destroy(nextPos.x, nextPos.y, 8);
+                 if (game.tick - this.lastDrillDestroyTick >= 2) {
+                     terrain.destroy(nextPos.x, nextPos.y, 8);
+                     this.lastDrillDestroyTick = game.tick;
+                 }
                  this.vel = this.vel.mult(0.96); 
                  this.pos = nextPos;
                  if(Math.random() < 0.1) particleSystem.emit(this.pos.clone(), new Vector2((Math.random()-0.5)*2, -2), 10, '#fff', 'spark');
@@ -2211,7 +2215,7 @@ class Game {
                 iconWrap.style.color = w.color;
                 const iconImg = document.createElement('img');
                 iconImg.className = 'slot-icon-img';
-                iconImg.src = `Assets/Images/${w.type}.jpg`;
+                iconImg.src = `Assets/Images/${w.type}.png`;
                 iconImg.alt = w.name;
                 iconImg.onerror = () => {
                     iconWrap.classList.add('slot-icon--fallback');
