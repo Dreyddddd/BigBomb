@@ -2162,12 +2162,16 @@ class Game {
     
     updateWaveRespawn() {
         // Now only used for displaying personal timer in CTF
-        if (CONFIG.GAME_MODE === 'CTF' && this.player.dead) {
-             const timer = document.getElementById('ctf-respawn-timer');
+        const timer = document.getElementById('ctf-respawn-timer');
+        if (!timer) return;
+        if (CONFIG.GAME_MODE === 'CTF' && this.player && this.player.dead) {
              timer.style.display = 'block';
-             document.getElementById('respawn-time-val').innerText = Math.ceil(this.player.respawnTimer / 60);
+             const respawnVal = document.getElementById('respawn-time-val');
+             if (respawnVal) {
+                 respawnVal.innerText = Math.ceil(this.player.respawnTimer / 60);
+             }
         } else {
-             document.getElementById('ctf-respawn-timer').style.display = 'none';
+             timer.style.display = 'none';
         }
     }
 
@@ -2208,11 +2212,16 @@ class Game {
     }
     
     loop() {
-        if (this.gameState === 'PLAYING' && !this.gameOver && !this.paused) {
-            this.update();
+        try {
+            if (this.gameState === 'PLAYING' && !this.gameOver && !this.paused) {
+                this.update();
+            }
+            this.draw();
+        } catch (err) {
+            console.error('Game loop error:', err);
+        } finally {
+            requestAnimationFrame(() => this.loop());
         }
-        this.draw();
-        requestAnimationFrame(() => this.loop());
     }
 
     update() {
@@ -2347,10 +2356,12 @@ class Game {
                 if (e === this.player) cls += ' row-me';
                 html += `<tr class="${cls}"><td>${e.name}</td><td>${e.kills}</td><td>${e.deaths}</td><td>${TEAMS[e.team].name}</td></tr>`;
             });
-            document.getElementById('stats-body').innerHTML = html;
+            const statsBody = document.getElementById('stats-body');
+            if (statsBody) statsBody.innerHTML = html;
             this.statsDirty = false;
         }
-        document.getElementById('hp-display').innerText = Math.floor(this.player.hp);
+        const hpDisplay = document.getElementById('hp-display');
+        if (hpDisplay && this.player) hpDisplay.innerText = Math.floor(this.player.hp);
     }
 
     draw() {
@@ -2396,7 +2407,7 @@ class Game {
         this.projectiles.forEach(p => { if (inView(p)) p.draw(this.ctx); });
         this.particleSystem.updateAndDraw(this.ctx, this);
         
-        if (this.gameState === 'PLAYING' && !this.player.dead && !this.paused) {
+        if (this.gameState === 'PLAYING' && this.player && !this.player.dead && !this.paused) {
             this.ctx.strokeStyle = 'rgba(255,255,255,0.3)'; this.ctx.setLineDash([5, 5]); this.ctx.beginPath();
             this.ctx.moveTo(this.player.pos.x, this.player.pos.y); this.ctx.lineTo(this.input.mouse.worldPos.x, this.input.mouse.worldPos.y);
             this.ctx.stroke(); this.ctx.setLineDash([]);
