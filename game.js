@@ -2198,14 +2198,31 @@ class Game {
         };
         for(let i=0; i<CONFIG.MAX_INVENTORY; i++) {
             let div = document.createElement('div'); div.className = 'inv-slot locked';
+            const keySpan = document.createElement('span');
+            keySpan.className = 'slot-key';
+            keySpan.textContent = `${i + 1}`;
+            div.appendChild(keySpan);
             if (i < this.player.inventory.length) {
                 let w = this.player.inventory[i];
                 div.className = 'inv-slot' + (this.player.weaponIndex === i ? ' active' : '');
                 const icon = weaponIcons[w.type] || weaponIcons.blaster;
-                div.innerHTML = `<span class="slot-key">${i+1}</span><div class="slot-icon" style="color:${w.color}">${icon}</div>`;
+                const iconWrap = document.createElement('div');
+                iconWrap.className = 'slot-icon';
+                iconWrap.style.color = w.color;
+                const iconImg = document.createElement('img');
+                iconImg.className = 'slot-icon-img';
+                iconImg.src = `Assets/Images/${w.type}.jpg`;
+                iconImg.alt = w.name;
+                iconImg.onerror = () => {
+                    iconWrap.classList.add('slot-icon--fallback');
+                };
+                const iconSvg = document.createElement('div');
+                iconSvg.className = 'slot-icon-svg';
+                iconSvg.innerHTML = icon;
+                iconWrap.appendChild(iconImg);
+                iconWrap.appendChild(iconSvg);
+                div.appendChild(iconWrap);
                 div.onclick = () => { this.player.switchWeapon(i); this.updateInventoryUI(); };
-            } else {
-                div.innerHTML = `<span class="slot-key">${i+1}</span>`;
             }
             container.appendChild(div);
         }
