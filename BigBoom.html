@@ -30,7 +30,7 @@
 
             <!-- RIGHT HUD: Leaderboard & Controls Hint -->
             <div class="hud-right">
-                <div class="controls-hint">WASD - Движение | ЛКМ - Огонь | 1-5 - Оружие | TAB - Статистика | ESC - Пауза</div>
+                <div class="controls-hint">WASD - Движение | ЛКМ - Огонь | 1-7 - Оружие | TAB - Статистика | ESC - Пауза</div>
                 <div class="leaderboard" id="leaderboard"></div>
             </div>
         </div>
@@ -65,6 +65,10 @@
             <span class="word-big">BIG</span> <span class="word-boom">BOOM</span>
         </h1>
         <input type="text" id="nickname-input" placeholder="ВВЕДИ НИКНЕЙМ" maxlength="12">
+        <div class="settings-group">
+            <label>Цвет персонажа:</label>
+            <input type="color" id="player-color-input" value="#3498db">
+        </div>
         <div class="btn-group-col">
             <button class="btn-main" onclick="startGame()">В БОЙ</button>
             <button class="btn-main btn-sec" onclick="openSettings('MENU')">НАСТРОЙКИ</button>
@@ -92,6 +96,55 @@
         <div class="settings-group">
             <label>Цель Победы: <span id="frag-limit-val" style="color:#f1c40f">10</span></label>
             <input type="range" id="frag-limit-input" min="1" max="50" value="10" oninput="updateSettingsUI()">
+        </div>
+
+        <div class="settings-group">
+            <label>Шлем:</label>
+            <select id="player-helmet-select">
+                <option value="none">Без шлема</option>
+                <option value="visor">Визор</option>
+                <option value="tactical">Тактический</option>
+                <option value="cap">Кепка</option>
+            </select>
+        </div>
+
+        <div class="settings-group">
+            <label>Одежда:</label>
+            <select id="player-outfit-select">
+                <option value="standard">Классика</option>
+                <option value="tactical">Тактик</option>
+                <option value="armor">Броня</option>
+                <option value="hoodie">Худи</option>
+            </select>
+        </div>
+
+        <div class="settings-group">
+            <label>Обувь:</label>
+            <select id="player-boots-select">
+                <option value="standard">Обычная</option>
+                <option value="combat">Берцы</option>
+                <option value="sneakers">Кроссы</option>
+            </select>
+        </div>
+
+        <div class="settings-group">
+            <label>Аксессуар:</label>
+            <select id="player-accessory-select">
+                <option value="none">Нет</option>
+                <option value="cape">Плащ</option>
+                <option value="backpack">Рюкзак</option>
+                <option value="antenna">Антенна</option>
+            </select>
+        </div>
+
+        <div class="settings-group">
+            <label>Цвет акцента:</label>
+            <input type="color" id="player-accent-input" value="#f1c40f">
+        </div>
+
+        <div class="settings-group">
+            <label>Цвет персонажа:</label>
+            <input type="color" id="player-color-input-settings" value="#3498db">
         </div>
 
         <button class="btn-main" onclick="closeSettings()">НАЗАД</button>

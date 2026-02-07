@@ -222,16 +222,23 @@ body {
         }
         .inv-slot.active .slot-key { color: #f1c40f; opacity: 1; }
         
-        .slot-name {
-            font-size: 11px;
-            font-weight: 800;
-            text-transform: uppercase;
-            text-align: center;
-            line-height: 1.1;
-            padding: 0 4px;
-            word-wrap: break-word;
-            text-shadow: 1px 1px 0px #000;
-        }
+.slot-name {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    text-align: center;
+    line-height: 1.1;
+    padding: 0 4px;
+    word-wrap: break-word;
+    text-shadow: 1px 1px 0px #000;
+}
+
+.slot-icon {
+    font-size: 20px;
+    line-height: 1;
+    margin-top: 6px;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+}
 
 .screen-overlay {
     position: absolute;
@@ -356,6 +363,16 @@ input[type="range"]::-webkit-slider-thumb {
     border-radius: 50%;
     cursor: pointer;
     box-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
+}
+
+input[type="color"] {
+    width: 100%;
+    height: 46px;
+    border: 2px solid #555;
+    border-radius: 6px;
+    background: #111;
+    padding: 4px;
+    cursor: pointer;
 }
 
 @keyframes slotPulse {
