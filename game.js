@@ -2215,7 +2215,7 @@ class Game {
                 iconWrap.style.color = w.color;
                 const iconImg = document.createElement('img');
                 iconImg.className = 'slot-icon-img';
-                iconImg.src = `Assets/Images/${w.type}.png`;
+                iconImg.src = `Assets/Images/${w.type}.jpg`;
                 iconImg.alt = w.name;
                 iconImg.onerror = () => {
                     iconWrap.classList.add('slot-icon--fallback');
@@ -2586,3 +2586,4 @@ document.addEventListener('input', (event) => {
         updateLobbyPreview();
     }
 });
+
