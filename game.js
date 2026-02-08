@@ -181,20 +181,79 @@ const Materials = {
 };
 
 const WeaponArt = {
-    'blaster': (ctx) => { ctx.fillStyle='#95a5a6'; ctx.fillRect(4,-2,8,4); ctx.fillStyle='#34495e'; ctx.fillRect(4,2,3,3); ctx.fillStyle='#3498db'; ctx.fillRect(10,-1,2,2); },
-    'explosive': (ctx) => { ctx.fillStyle='#2c3e50'; ctx.fillRect(0,-4,16,6); ctx.fillStyle='#27ae60'; ctx.fillRect(4,-5,8,8); ctx.fillStyle='#c0392b'; ctx.fillRect(14,-4,2,6); ctx.fillStyle='#34495e'; ctx.fillRect(4,2,4,4); },
-    'bounce': (ctx) => { ctx.fillStyle='#7f8c8d'; ctx.fillRect(2,-3,10,6); ctx.fillStyle='#2ecc71'; ctx.beginPath(); ctx.arc(12,0,3,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#34495e'; ctx.fillRect(2,3,3,3); },
-    'drill': (ctx) => { ctx.fillStyle='#f39c12'; ctx.fillRect(2,-3,8,6); ctx.fillStyle='#bdc3c7'; ctx.beginPath(); ctx.moveTo(10,-2); ctx.lineTo(18,0); ctx.lineTo(10,2); ctx.fill(); ctx.fillStyle='#34495e'; ctx.fillRect(2,3,4,3); },
-    'energy': (ctx) => { ctx.fillStyle='#fff'; ctx.fillRect(2,-3,10,6); ctx.fillStyle='#00ffcc'; ctx.fillRect(4,-2,6,4); ctx.fillStyle='#34495e'; ctx.fillRect(2,3,4,3); },
-    'molotov': (ctx) => { ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.arc(10,0,4,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#e67e22'; ctx.beginPath(); ctx.arc(10,2,3,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#fff'; ctx.fillRect(9,-6,2,3); ctx.fillStyle='#e74c3c'; ctx.fillRect(9,-8,2,2); },
-    'blackhole': (ctx) => { ctx.fillStyle='#2c3e50'; ctx.fillRect(2,-3,8,6); ctx.fillStyle='#8e44ad'; ctx.beginPath(); ctx.arc(12,0,4,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.stroke(); },
-    'shotgun': (ctx) => { ctx.fillStyle='#7f8c8d'; ctx.fillRect(2,-2,12,2); ctx.fillStyle='#7f8c8d'; ctx.fillRect(2,1,12,2); ctx.fillStyle='#8d6e63'; ctx.fillRect(0,-1,4,4); },
-    'highspeed': (ctx) => { ctx.fillStyle='#34495e'; ctx.fillRect(0,-1,18,2); ctx.fillStyle='#000'; ctx.fillRect(4,-4,6,2); ctx.fillStyle='#8d6e63'; ctx.fillRect(-2,0,6,3); },
-    'rapid': (ctx) => { ctx.fillStyle='#34495e'; ctx.fillRect(2,-4,10,8); ctx.fillStyle='#95a5a6'; ctx.fillRect(12,-3,6,6); ctx.fillStyle='#7f8c8d'; ctx.fillRect(4,4,4,4); },
-    'homing': (ctx) => { ctx.fillStyle='#8e44ad'; ctx.fillRect(0,-5,10,10); ctx.fillStyle='#ff00ff'; ctx.beginPath(); ctx.arc(5,0,3,0,Math.PI*2); ctx.fill(); },
-    'teleport': (ctx) => { ctx.fillStyle='#3498db'; ctx.fillRect(6,-2,6,4); ctx.fillStyle='#ecf0f1'; ctx.fillRect(8,-1,2,2); ctx.fillStyle='#3498db'; ctx.fillRect(6,2,2,4); },
-    'laser': (ctx) => { ctx.fillStyle='#fff'; ctx.fillRect(2,-2,12,4); ctx.fillStyle='#e74c3c'; ctx.fillRect(4,-1,8,2); },
-    'nuke': (ctx) => { ctx.fillStyle='#2c3e50'; ctx.beginPath(); ctx.arc(10,0,5,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#f1c40f'; ctx.beginPath(); ctx.arc(10,0,2,0,Math.PI*2); ctx.fill(); }
+    'blaster': (ctx) => {
+        ctx.fillStyle='#2c3e50'; ctx.fillRect(2,-3,14,6);
+        ctx.fillStyle='#95a5a6'; ctx.fillRect(4,-4,10,2);
+        ctx.fillStyle='#3498db'; ctx.fillRect(12,-2,3,2);
+        ctx.fillStyle='#1f2d3a'; ctx.fillRect(4,2,4,3);
+    },
+    'explosive': (ctx) => {
+        ctx.fillStyle='#2c3e50'; ctx.fillRect(0,-5,18,8);
+        ctx.fillStyle='#27ae60'; ctx.fillRect(5,-6,8,4);
+        ctx.fillStyle='#c0392b'; ctx.fillRect(14,-4,3,6);
+        ctx.fillStyle='#34495e'; ctx.fillRect(3,3,5,3);
+    },
+    'bounce': (ctx) => {
+        ctx.fillStyle='#7f8c8d'; ctx.fillRect(2,-4,12,7);
+        ctx.fillStyle='#2ecc71'; ctx.beginPath(); ctx.arc(14,0,3.5,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#34495e'; ctx.fillRect(3,3,4,3);
+    },
+    'drill': (ctx) => {
+        ctx.fillStyle='#f39c12'; ctx.fillRect(2,-4,9,7);
+        ctx.fillStyle='#bdc3c7'; ctx.beginPath(); ctx.moveTo(11,-3); ctx.lineTo(20,0); ctx.lineTo(11,3); ctx.fill();
+        ctx.fillStyle='#34495e'; ctx.fillRect(3,3,4,3);
+    },
+    'energy': (ctx) => {
+        ctx.fillStyle='#34495e'; ctx.fillRect(2,-4,12,7);
+        ctx.fillStyle='#00ffcc'; ctx.fillRect(4,-3,8,5);
+        ctx.fillStyle='#ecf0f1'; ctx.fillRect(5,-4,6,2);
+    },
+    'molotov': (ctx) => {
+        ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.arc(11,1,4.5,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#e67e22'; ctx.beginPath(); ctx.arc(11,3,3.5,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.fillRect(10,-7,2,4);
+        ctx.fillStyle='#e74c3c'; ctx.fillRect(10,-9,2,2);
+    },
+    'blackhole': (ctx) => {
+        ctx.fillStyle='#2c3e50'; ctx.fillRect(2,-3,8,6);
+        ctx.fillStyle='#8e44ad'; ctx.beginPath(); ctx.arc(12,0,4.5,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.stroke();
+    },
+    'shotgun': (ctx) => {
+        ctx.fillStyle='#7f8c8d'; ctx.fillRect(0,-4,20,7);
+        ctx.fillStyle='#2c3e50'; ctx.fillRect(0,3,9,3);
+        ctx.fillStyle='#8d6e63'; ctx.fillRect(-2,0,5,3);
+    },
+    'highspeed': (ctx) => {
+        ctx.fillStyle='#34495e'; ctx.fillRect(0,-2,20,4);
+        ctx.fillStyle='#000'; ctx.fillRect(5,-5,7,2);
+        ctx.fillStyle='#8d6e63'; ctx.fillRect(-2,0,6,3);
+    },
+    'rapid': (ctx) => {
+        ctx.fillStyle='#2c3e50'; ctx.fillRect(0,-5,18,9);
+        ctx.fillStyle='#7f8c8d'; ctx.fillRect(12,-4,5,7);
+        ctx.fillStyle='#34495e'; ctx.fillRect(3,3,6,3);
+    },
+    'homing': (ctx) => {
+        ctx.fillStyle='#8e44ad'; ctx.fillRect(0,-4,16,7);
+        ctx.fillStyle='#f1c40f'; ctx.beginPath(); ctx.arc(12,0,3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#2c3e50'; ctx.fillRect(3,3,5,3);
+    },
+    'teleport': (ctx) => {
+        ctx.fillStyle='#3498db'; ctx.fillRect(0,-4,16,7);
+        ctx.fillStyle='#ecf0f1'; ctx.fillRect(11,-3,4,5);
+        ctx.fillStyle='#2c3e50'; ctx.fillRect(3,3,5,3);
+    },
+    'laser': (ctx) => {
+        ctx.fillStyle='#e74c3c'; ctx.fillRect(0,-3,18,6);
+        ctx.fillStyle='#c0392b'; ctx.fillRect(13,-2,5,4);
+        ctx.fillStyle='#2c3e50'; ctx.fillRect(3,3,5,3);
+    },
+    'nuke': (ctx) => {
+        ctx.fillStyle='#2c3e50'; ctx.fillRect(0,-5,18,9);
+        ctx.fillStyle='#95a5a6'; ctx.fillRect(4,-7,10,4);
+        ctx.fillStyle='#e74c3c'; ctx.fillRect(13,-3,3,6);
+    }
 };
 
 // --- 4. Particles ---
@@ -1511,7 +1570,9 @@ class Character {
         ctx.fillStyle = '#333'; ctx.fillRect(-15, -35, 30, 4);
         ctx.fillStyle = this.hp > 50 ? '#2ecc71' : '#e74c3c'; ctx.fillRect(-15, -35, 30 * (this.hp / 100), 4);
 
-        if (!aimFacingRight) ctx.scale(-1, 1);
+        const detailScale = 1.2;
+        if (!aimFacingRight) ctx.scale(-detailScale, detailScale);
+        else ctx.scale(detailScale, detailScale);
         const isMoving = Math.abs(this.vel.x) > 0.1;
         const walkCycle = isMoving ? Math.sin(this.animTimer * 2) * 4 : 0;
         const breathe = Math.sin(this.animTimer * 0.5);
