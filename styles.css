@@ -180,8 +180,8 @@ body {
             flex-wrap: wrap;
         }
 .inv-slot {
-    width: 70px;
-    height: 84px;
+    width: 62px;
+    height: 72px;
     background: linear-gradient(135deg, rgba(40,40,40,0.9), rgba(20,20,20,0.95));
     border: 2px solid #555;
     border-radius: 10px;
@@ -223,7 +223,7 @@ body {
         .inv-slot.active .slot-key { color: #f1c40f; opacity: 1; }
         
 .slot-name {
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 800;
     text-transform: uppercase;
     text-align: center;
@@ -246,8 +246,8 @@ body {
 }
 
 .slot-icon-img {
-    width: 66px;
-    height: 66px;
+    width: 48px;
+    height: 48px;
     object-fit: contain;
     display: block;
 }
