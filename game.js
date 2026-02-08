@@ -80,7 +80,13 @@ const COSMETICS = {
         { id: '2', label: 'Тип 2' },
         { id: '3', label: 'Тип 3' },
         { id: '4', label: 'Тип 4' },
-        { id: '5', label: 'Тип 5' }
+        { id: '5', label: 'Тип 5' },
+        { id: '6', label: 'Тип 6' },
+        { id: '7', label: 'Тип 7' },
+        { id: '8', label: 'Тип 8' },
+        { id: '9', label: 'Тип 9' },
+        { id: '10', label: 'Тип 10' },
+        { id: '11', label: 'Тип 11' }
     ],
     outfits: [
         { id: 'standard', label: 'Классика' },
@@ -1695,11 +1701,14 @@ class Character {
 
         const headImg = getHeadImage(cosmetics.head);
         if (headImg && headImg.complete && headImg.naturalWidth > 0) {
-            const headSize = 18;
-            ctx.drawImage(headImg, -headSize / 2, -24, headSize, headSize);
+            const headSize = 26;
+            ctx.save();
+            ctx.scale(1, -1);
+            ctx.drawImage(headImg, -headSize / 2, 24 - headSize, headSize, headSize);
+            ctx.restore();
         } else {
             ctx.fillStyle = '#f1c40f';
-            ctx.beginPath(); ctx.arc(0, -15, 8, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, -16, 9, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = '#000'; ctx.fillRect(1, -14, 5, 2);
         }
 
@@ -2352,7 +2361,7 @@ class Game {
                 iconWrap.style.color = w.color;
                 const iconImg = document.createElement('img');
                 iconImg.className = 'slot-icon-img';
-                iconImg.src = `Assets/Images/WeaponIcons/${w.type}.jpg`;
+                iconImg.src = `Assets/Images/WeaponIcons/${w.type}.png`;
                 iconImg.alt = w.name;
                 iconWrap.appendChild(iconImg);
                 div.appendChild(iconWrap);
