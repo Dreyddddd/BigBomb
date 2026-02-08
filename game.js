@@ -75,16 +75,12 @@ const TEAMS = {
 };
 
 const COSMETICS = {
-    helmets: [
-        { id: 'none', label: 'Без шлема' },
-        { id: 'visor', label: 'Визор' },
-        { id: 'tactical', label: 'Тактический' },
-        { id: 'cap', label: 'Кепка' },
-        { id: 'goggles', label: 'Очки' },
-        { id: 'full', label: 'Полный' },
-        { id: 'hood', label: 'Капюшон' },
-        { id: 'horned', label: 'Рога' },
-        { id: 'crown', label: 'Корона' }
+    heads: [
+        { id: '1', label: 'Тип 1' },
+        { id: '2', label: 'Тип 2' },
+        { id: '3', label: 'Тип 3' },
+        { id: '4', label: 'Тип 4' },
+        { id: '5', label: 'Тип 5' }
     ],
     outfits: [
         { id: 'standard', label: 'Классика' },
@@ -109,7 +105,6 @@ const COSMETICS = {
         { id: 'none', label: 'Нет' },
         { id: 'cape', label: 'Плащ' },
         { id: 'backpack', label: 'Рюкзак' },
-        { id: 'antenna', label: 'Антенна' },
         { id: 'scarf', label: 'Шарф' },
         { id: 'jetpack', label: 'Джетпак' },
         { id: 'satchel', label: 'Сумка' },
@@ -124,9 +119,20 @@ function randomChoice(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
 }
 
+const headImageCache = new Map();
+function getHeadImage(headId) {
+    if (!headId) return null;
+    if (!headImageCache.has(headId)) {
+        const img = new Image();
+        img.src = `assets/images/heads/${headId}.png`;
+        headImageCache.set(headId, img);
+    }
+    return headImageCache.get(headId);
+}
+
 function defaultCosmetics() {
     return {
-        helmet: 'none',
+        head: '1',
         outfit: 'standard',
         boots: 'standard',
         accessory: 'none',
@@ -138,7 +144,7 @@ function randomBotCosmetics() {
     return {
         color: randomChoice(COSMETICS.palette),
         cosmetics: {
-            helmet: randomChoice(COSMETICS.helmets).id,
+            head: randomChoice(COSMETICS.heads).id,
             outfit: randomChoice(COSMETICS.outfits).id,
             boots: randomChoice(COSMETICS.boots).id,
             accessory: randomChoice(COSMETICS.accessories).id,
@@ -1598,15 +1604,6 @@ class Character {
             ctx.fillRect(-10, -8, 6, 14);
             ctx.fillStyle = '#222';
             ctx.fillRect(-9, -4, 4, 7);
-        } else if (cosmetics.accessory === 'antenna') {
-            ctx.strokeStyle = cosmetics.accent;
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(0, -21);
-            ctx.lineTo(0, -31);
-            ctx.stroke();
-            ctx.fillStyle = cosmetics.accent;
-            ctx.beginPath(); ctx.arc(0, -33, 2.6, 0, Math.PI * 2); ctx.fill();
         } else if (cosmetics.accessory === 'scarf') {
             ctx.fillStyle = cosmetics.accent;
             ctx.fillRect(-8, -9, 16, 3);
@@ -1696,61 +1693,15 @@ class Character {
             ctx.fillRect(-6, -3, 12, 2);
         }
 
-        ctx.fillStyle = '#f1c40f'; ctx.beginPath(); ctx.arc(0, -15, 8, 0, Math.PI*2); ctx.fill();
-
-        if (cosmetics.helmet === 'visor') {
-            ctx.fillStyle = cosmetics.accent;
-            ctx.beginPath(); ctx.arc(0, -16, 8.2, Math.PI, 0); ctx.lineTo(8.2, -13); ctx.lineTo(-8.2, -13); ctx.fill();
-        } else if (cosmetics.helmet === 'tactical') {
-            ctx.fillStyle = '#2c3e50';
-            ctx.fillRect(-8, -22, 16, 4);
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-5, -20, 10, 2);
-        } else if (cosmetics.helmet === 'cap') {
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-8, -20, 16, 3);
-            ctx.fillRect(-14, -18, 12, 2);
-        } else if (cosmetics.helmet === 'goggles') {
-            ctx.fillStyle = '#2c3e50';
-            ctx.fillRect(-8, -18, 16, 4);
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-7, -17, 6, 3);
-            ctx.fillRect(1, -17, 6, 3);
-        } else if (cosmetics.helmet === 'full') {
-            ctx.fillStyle = '#2c3e50';
-            ctx.beginPath(); ctx.arc(0, -16, 8.6, Math.PI, 0); ctx.lineTo(8.6, -16); ctx.lineTo(8.6, -10); ctx.lineTo(-8.6, -10); ctx.fill();
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-5, -14, 10, 2);
-        } else if (cosmetics.helmet === 'hood') {
-            ctx.fillStyle = '#2d3436';
-            ctx.beginPath(); ctx.arc(0, -16, 9, Math.PI, 0); ctx.lineTo(9, -12); ctx.lineTo(-9, -12); ctx.fill();
-        } else if (cosmetics.helmet === 'horned') {
-            ctx.fillStyle = '#2c3e50';
-            ctx.beginPath(); ctx.arc(0, -16, 8.6, Math.PI, 0); ctx.lineTo(8.6, -16); ctx.lineTo(8.6, -10); ctx.lineTo(-8.6, -10); ctx.fill();
-            ctx.strokeStyle = cosmetics.accent;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(-5, -20);
-            ctx.lineTo(-9, -26);
-            ctx.moveTo(5, -20);
-            ctx.lineTo(9, -26);
-            ctx.stroke();
-        } else if (cosmetics.helmet === 'crown') {
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-8, -22, 16, 3);
-            ctx.beginPath();
-            ctx.moveTo(-8, -22);
-            ctx.lineTo(-4, -26);
-            ctx.lineTo(0, -22);
-            ctx.lineTo(4, -26);
-            ctx.lineTo(8, -22);
-            ctx.closePath();
-            ctx.fill();
+        const headImg = getHeadImage(cosmetics.head);
+        if (headImg && headImg.complete && headImg.naturalWidth > 0) {
+            const headSize = 18;
+            ctx.drawImage(headImg, -headSize / 2, -24, headSize, headSize);
         } else {
-            ctx.fillStyle = '#2c3e50';
-            ctx.beginPath(); ctx.arc(0, -16, 8.2, Math.PI, 0); ctx.lineTo(8.2, -16); ctx.lineTo(8.2, -10); ctx.lineTo(-8.2, -10); ctx.fill();
+            ctx.fillStyle = '#f1c40f';
+            ctx.beginPath(); ctx.arc(0, -15, 8, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#000'; ctx.fillRect(1, -14, 5, 2);
         }
-        ctx.fillStyle = '#000'; ctx.fillRect(1, -14, 5, 2);
 
         if (cosmetics.boots === 'combat') {
             ctx.fillStyle = '#111';
@@ -2657,7 +2608,7 @@ function openLobby(fromScreen) {
     document.getElementById('frag-limit-input').value = CONFIG.WIN_LIMIT; 
     document.getElementById('frag-limit-val').innerText = CONFIG.WIN_LIMIT;
     const cosmetics = gameInstance?.playerCosmetics || defaultCosmetics();
-    const helmetSelect = document.getElementById('player-helmet-select');
+    const headSelect = document.getElementById('player-head-select');
     const outfitSelect = document.getElementById('player-outfit-select');
     const bootsSelect = document.getElementById('player-boots-select');
     const accessorySelect = document.getElementById('player-accessory-select');
@@ -2666,7 +2617,7 @@ function openLobby(fromScreen) {
     const colorInputStart = document.getElementById('player-color-input');
     const lobbyName = document.getElementById('lobby-nickname-input');
     if (lobbyName) lobbyName.value = document.getElementById('nickname-input')?.value || '';
-    if (helmetSelect) helmetSelect.value = cosmetics.helmet;
+    if (headSelect) headSelect.value = cosmetics.head;
     if (outfitSelect) outfitSelect.value = cosmetics.outfit;
     if (bootsSelect) bootsSelect.value = cosmetics.boots;
     if (accessorySelect) accessorySelect.value = cosmetics.accessory;
@@ -2705,12 +2656,12 @@ function closeLobby() {
 
 function getPlayerCosmeticsFromUI(current) {
     const cosmetics = { ...defaultCosmetics(), ...(current || {}) };
-    const helmetSelect = document.getElementById('player-helmet-select');
+    const headSelect = document.getElementById('player-head-select');
     const outfitSelect = document.getElementById('player-outfit-select');
     const bootsSelect = document.getElementById('player-boots-select');
     const accessorySelect = document.getElementById('player-accessory-select');
     const accentInput = document.getElementById('player-accent-input');
-    if (helmetSelect) cosmetics.helmet = helmetSelect.value;
+    if (headSelect) cosmetics.head = headSelect.value;
     if (outfitSelect) cosmetics.outfit = outfitSelect.value;
     if (bootsSelect) cosmetics.boots = bootsSelect.value;
     if (accessorySelect) cosmetics.accessory = accessorySelect.value;
@@ -2733,12 +2684,12 @@ function startGameFromLobby() {
 }
 
 function populateCosmeticsSelects() {
-    const helmetSelect = document.getElementById('player-helmet-select');
+    const headSelect = document.getElementById('player-head-select');
     const outfitSelect = document.getElementById('player-outfit-select');
     const bootsSelect = document.getElementById('player-boots-select');
     const accessorySelect = document.getElementById('player-accessory-select');
-    if (helmetSelect && helmetSelect.options.length === 0) {
-        COSMETICS.helmets.forEach(opt => helmetSelect.add(new Option(opt.label, opt.id)));
+    if (headSelect && headSelect.options.length === 0) {
+        COSMETICS.heads.forEach(opt => headSelect.add(new Option(opt.label, opt.id)));
     }
     if (outfitSelect && outfitSelect.options.length === 0) {
         COSMETICS.outfits.forEach(opt => outfitSelect.add(new Option(opt.label, opt.id)));
