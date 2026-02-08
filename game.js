@@ -2201,7 +2201,7 @@ class Game {
                 iconWrap.style.color = w.color;
                 const iconImg = document.createElement('img');
                 iconImg.className = 'slot-icon-img';
-                iconImg.src = `Assets/Images/${w.type}.jpg`;
+                iconImg.src = `Assets/Images/WeaponIcons/${w.type}.jpg`;
                 iconImg.alt = w.name;
                 iconWrap.appendChild(iconImg);
                 div.appendChild(iconWrap);
