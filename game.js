@@ -79,24 +79,43 @@ const COSMETICS = {
         { id: 'none', label: 'Без шлема' },
         { id: 'visor', label: 'Визор' },
         { id: 'tactical', label: 'Тактический' },
-        { id: 'cap', label: 'Кепка' }
+        { id: 'cap', label: 'Кепка' },
+        { id: 'goggles', label: 'Очки' },
+        { id: 'full', label: 'Полный' },
+        { id: 'hood', label: 'Капюшон' },
+        { id: 'horned', label: 'Рога' },
+        { id: 'crown', label: 'Корона' }
     ],
     outfits: [
         { id: 'standard', label: 'Классика' },
         { id: 'tactical', label: 'Тактик' },
         { id: 'armor', label: 'Броня' },
-        { id: 'hoodie', label: 'Худи' }
+        { id: 'hoodie', label: 'Худи' },
+        { id: 'stealth', label: 'Стелс' },
+        { id: 'medic', label: 'Медик' },
+        { id: 'pilot', label: 'Пилот' },
+        { id: 'cyber', label: 'Кибер' },
+        { id: 'nomad', label: 'Кочевник' }
     ],
     boots: [
         { id: 'standard', label: 'Обычные' },
         { id: 'combat', label: 'Берцы' },
-        { id: 'sneakers', label: 'Кроссы' }
+        { id: 'sneakers', label: 'Кроссы' },
+        { id: 'runner', label: 'Раннер' },
+        { id: 'heavy', label: 'Тяжёлые' },
+        { id: 'armored', label: 'Бронеботы' }
     ],
     accessories: [
         { id: 'none', label: 'Нет' },
         { id: 'cape', label: 'Плащ' },
         { id: 'backpack', label: 'Рюкзак' },
-        { id: 'antenna', label: 'Антенна' }
+        { id: 'antenna', label: 'Антенна' },
+        { id: 'scarf', label: 'Шарф' },
+        { id: 'jetpack', label: 'Джетпак' },
+        { id: 'satchel', label: 'Сумка' },
+        { id: 'medal', label: 'Медаль' },
+        { id: 'shieldgen', label: 'Генератор' },
+        { id: 'banner', label: 'Флаг' }
     ],
     palette: ['#3498db', '#e67e22', '#9b59b6', '#2ecc71', '#f1c40f', '#e74c3c', '#95a5a6']
 };
@@ -1498,8 +1517,8 @@ class Character {
         const breathe = Math.sin(this.animTimer * 0.5);
 
         ctx.fillStyle = '#34495e';
-        ctx.beginPath(); ctx.ellipse(-2 + walkCycle, 10, 3, 4, 0, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(2 - walkCycle, 10, 3, 4, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-2.5 + walkCycle, 12, 4, 5, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(2.5 - walkCycle, 12, 4, 5, 0, 0, Math.PI*2); ctx.fill();
 
         ctx.translate(0, breathe);
         const cosmetics = this.cosmetics || defaultCosmetics();
@@ -1507,77 +1526,197 @@ class Character {
         if (cosmetics.accessory === 'cape') {
             ctx.fillStyle = cosmetics.accent;
             ctx.beginPath();
-            ctx.moveTo(-6, -6);
-            ctx.lineTo(-10, 12);
-            ctx.lineTo(0, 10);
-            ctx.lineTo(6, -6);
+            ctx.moveTo(-8, -8);
+            ctx.lineTo(-14, 14);
+            ctx.lineTo(0, 13);
+            ctx.lineTo(8, -8);
             ctx.closePath();
             ctx.fill();
         } else if (cosmetics.accessory === 'backpack') {
             ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-8, -6, 4, 10);
+            ctx.fillRect(-10, -8, 6, 14);
             ctx.fillStyle = '#222';
-            ctx.fillRect(-7, -4, 2, 6);
+            ctx.fillRect(-9, -4, 4, 7);
         } else if (cosmetics.accessory === 'antenna') {
             ctx.strokeStyle = cosmetics.accent;
             ctx.lineWidth = 1.5;
             ctx.beginPath();
-            ctx.moveTo(0, -18);
-            ctx.lineTo(0, -26);
+            ctx.moveTo(0, -21);
+            ctx.lineTo(0, -31);
             ctx.stroke();
             ctx.fillStyle = cosmetics.accent;
-            ctx.beginPath(); ctx.arc(0, -28, 2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, -33, 2.6, 0, Math.PI * 2); ctx.fill();
+        } else if (cosmetics.accessory === 'scarf') {
+            ctx.fillStyle = cosmetics.accent;
+            ctx.fillRect(-8, -9, 16, 3);
+            ctx.fillRect(4, -7, 3, 7);
+        } else if (cosmetics.accessory === 'jetpack') {
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillRect(-12, -8, 5, 14);
+            ctx.fillRect(7, -8, 5, 14);
+            ctx.fillStyle = cosmetics.accent;
+            ctx.fillRect(-10, 4, 3, 4);
+            ctx.fillRect(9, 4, 3, 4);
+        } else if (cosmetics.accessory === 'satchel') {
+            ctx.fillStyle = '#8e6e53';
+            ctx.fillRect(-11, 1, 7, 7);
+            ctx.strokeStyle = '#5d4037';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-8, -6);
+            ctx.lineTo(-4, 3);
+            ctx.stroke();
+        } else if (cosmetics.accessory === 'medal') {
+            ctx.fillStyle = '#f1c40f';
+            ctx.beginPath(); ctx.arc(0, -4, 3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#c0392b';
+            ctx.fillRect(-1, -10, 2, 5);
+        } else if (cosmetics.accessory === 'shieldgen') {
+            ctx.fillStyle = '#16a085';
+            ctx.fillRect(-12, -6, 6, 10);
+            ctx.fillStyle = '#0f5c4e';
+            ctx.fillRect(-11, -2, 4, 4);
+        } else if (cosmetics.accessory === 'banner') {
+            ctx.strokeStyle = cosmetics.accent;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(8, -10);
+            ctx.lineTo(8, 10);
+            ctx.stroke();
+            ctx.fillStyle = cosmetics.accent;
+            ctx.fillRect(8, -10, 8, 6);
         }
 
         ctx.fillStyle = this.color;
-        ctx.beginPath(); ctx.roundRect(-6, -8, 12, 16, 4); ctx.fill();
-        ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(-4, -6, 8, 10);
+        ctx.beginPath(); ctx.roundRect(-8, -10, 16, 20, 6); ctx.fill();
+        ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(-6, -8, 12, 14);
+        ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(-7, -9, 5, 7);
 
         if (cosmetics.outfit === 'tactical') {
             ctx.fillStyle = '#2c3e50';
-            ctx.fillRect(-6, -6, 12, 6);
+            ctx.fillRect(-8, -7, 16, 7);
             ctx.fillStyle = cosmetics.accent;
             ctx.fillRect(-2, -6, 4, 6);
         } else if (cosmetics.outfit === 'armor') {
             ctx.fillStyle = '#7f8c8d';
-            ctx.fillRect(-6, -8, 12, 8);
+            ctx.fillRect(-8, -10, 16, 10);
             ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-6, -2, 12, 2);
+            ctx.fillRect(-8, -2, 16, 3);
         } else if (cosmetics.outfit === 'hoodie') {
             ctx.fillStyle = '#2d3436';
-            ctx.fillRect(-6, -8, 12, 4);
+            ctx.fillRect(-8, -10, 16, 6);
             ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-3, -4, 6, 2);
+            ctx.fillRect(-5, -4, 10, 2);
+        } else if (cosmetics.outfit === 'stealth') {
+            ctx.fillStyle = '#1c1c1c';
+            ctx.fillRect(-8, -10, 16, 7);
+            ctx.fillStyle = '#555';
+            ctx.fillRect(-8, -3, 16, 2);
+        } else if (cosmetics.outfit === 'medic') {
+            ctx.fillStyle = '#ecf0f1';
+            ctx.fillRect(-8, -10, 16, 7);
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect(-1, -8, 2, 7);
+            ctx.fillRect(-5, -5, 10, 2);
+        } else if (cosmetics.outfit === 'pilot') {
+            ctx.fillStyle = '#8e6e53';
+            ctx.fillRect(-8, -10, 16, 7);
+            ctx.fillStyle = cosmetics.accent;
+            ctx.fillRect(-8, -4, 16, 2);
+        } else if (cosmetics.outfit === 'cyber') {
+            ctx.fillStyle = '#34495e';
+            ctx.fillRect(-8, -10, 16, 7);
+            ctx.fillStyle = '#00ffcc';
+            ctx.fillRect(-8, -6, 16, 2);
+        } else if (cosmetics.outfit === 'nomad') {
+            ctx.fillStyle = '#6d4c41';
+            ctx.fillRect(-8, -10, 16, 7);
+            ctx.fillStyle = cosmetics.accent;
+            ctx.fillRect(-6, -3, 12, 2);
         }
 
-        ctx.fillStyle = '#f1c40f'; ctx.beginPath(); ctx.arc(0, -12, 6, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#f1c40f'; ctx.beginPath(); ctx.arc(0, -15, 8, 0, Math.PI*2); ctx.fill();
 
         if (cosmetics.helmet === 'visor') {
             ctx.fillStyle = cosmetics.accent;
-            ctx.beginPath(); ctx.arc(0, -13, 6.5, Math.PI, 0); ctx.lineTo(6.5, -12); ctx.lineTo(-6.5, -12); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, -16, 8.2, Math.PI, 0); ctx.lineTo(8.2, -13); ctx.lineTo(-8.2, -13); ctx.fill();
         } else if (cosmetics.helmet === 'tactical') {
             ctx.fillStyle = '#2c3e50';
-            ctx.fillRect(-6, -18, 12, 4);
+            ctx.fillRect(-8, -22, 16, 4);
             ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-4, -16, 8, 2);
+            ctx.fillRect(-5, -20, 10, 2);
         } else if (cosmetics.helmet === 'cap') {
             ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-6, -17, 12, 3);
-            ctx.fillRect(-10, -15, 8, 2);
+            ctx.fillRect(-8, -20, 16, 3);
+            ctx.fillRect(-14, -18, 12, 2);
+        } else if (cosmetics.helmet === 'goggles') {
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillRect(-8, -18, 16, 4);
+            ctx.fillStyle = cosmetics.accent;
+            ctx.fillRect(-7, -17, 6, 3);
+            ctx.fillRect(1, -17, 6, 3);
+        } else if (cosmetics.helmet === 'full') {
+            ctx.fillStyle = '#2c3e50';
+            ctx.beginPath(); ctx.arc(0, -16, 8.6, Math.PI, 0); ctx.lineTo(8.6, -16); ctx.lineTo(8.6, -10); ctx.lineTo(-8.6, -10); ctx.fill();
+            ctx.fillStyle = cosmetics.accent;
+            ctx.fillRect(-5, -14, 10, 2);
+        } else if (cosmetics.helmet === 'hood') {
+            ctx.fillStyle = '#2d3436';
+            ctx.beginPath(); ctx.arc(0, -16, 9, Math.PI, 0); ctx.lineTo(9, -12); ctx.lineTo(-9, -12); ctx.fill();
+        } else if (cosmetics.helmet === 'horned') {
+            ctx.fillStyle = '#2c3e50';
+            ctx.beginPath(); ctx.arc(0, -16, 8.6, Math.PI, 0); ctx.lineTo(8.6, -16); ctx.lineTo(8.6, -10); ctx.lineTo(-8.6, -10); ctx.fill();
+            ctx.strokeStyle = cosmetics.accent;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-5, -20);
+            ctx.lineTo(-9, -26);
+            ctx.moveTo(5, -20);
+            ctx.lineTo(9, -26);
+            ctx.stroke();
+        } else if (cosmetics.helmet === 'crown') {
+            ctx.fillStyle = cosmetics.accent;
+            ctx.fillRect(-8, -22, 16, 3);
+            ctx.beginPath();
+            ctx.moveTo(-8, -22);
+            ctx.lineTo(-4, -26);
+            ctx.lineTo(0, -22);
+            ctx.lineTo(4, -26);
+            ctx.lineTo(8, -22);
+            ctx.closePath();
+            ctx.fill();
         } else {
             ctx.fillStyle = '#2c3e50';
-            ctx.beginPath(); ctx.arc(0, -13, 6.5, Math.PI, 0); ctx.lineTo(6.5, -13); ctx.lineTo(6.5, -10); ctx.lineTo(-6.5, -10); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, -16, 8.2, Math.PI, 0); ctx.lineTo(8.2, -16); ctx.lineTo(8.2, -10); ctx.lineTo(-8.2, -10); ctx.fill();
         }
-        ctx.fillStyle = '#000'; ctx.fillRect(1, -12, 4, 2);
+        ctx.fillStyle = '#000'; ctx.fillRect(1, -14, 5, 2);
 
         if (cosmetics.boots === 'combat') {
             ctx.fillStyle = '#111';
-            ctx.fillRect(-6 + walkCycle, 10, 5, 3);
-            ctx.fillRect(1 - walkCycle, 10, 5, 3);
+            ctx.fillRect(-8 + walkCycle, 14, 7, 3);
+            ctx.fillRect(1 - walkCycle, 14, 7, 3);
         } else if (cosmetics.boots === 'sneakers') {
             ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-5 + walkCycle, 10, 4, 2);
-            ctx.fillRect(1 - walkCycle, 10, 4, 2);
+            ctx.fillRect(-7 + walkCycle, 14, 6, 2);
+            ctx.fillRect(1 - walkCycle, 14, 6, 2);
+        } else if (cosmetics.boots === 'runner') {
+            ctx.fillStyle = '#ecf0f1';
+            ctx.fillRect(-7 + walkCycle, 14, 6, 2);
+            ctx.fillRect(1 - walkCycle, 14, 6, 2);
+            ctx.fillStyle = cosmetics.accent;
+            ctx.fillRect(-6 + walkCycle, 15, 4, 1);
+            ctx.fillRect(2 - walkCycle, 15, 4, 1);
+        } else if (cosmetics.boots === 'heavy') {
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillRect(-8 + walkCycle, 13, 7, 4);
+            ctx.fillRect(1 - walkCycle, 13, 7, 4);
+        } else if (cosmetics.boots === 'armored') {
+            ctx.fillStyle = '#7f8c8d';
+            ctx.fillRect(-8 + walkCycle, 13, 7, 4);
+            ctx.fillRect(1 - walkCycle, 13, 7, 4);
+            ctx.fillStyle = cosmetics.accent;
+            ctx.fillRect(-7 + walkCycle, 14, 5, 2);
+            ctx.fillRect(2 - walkCycle, 14, 5, 2);
         }
         
         let aimX = this.input.aimTarget.x - this.pos.x;
