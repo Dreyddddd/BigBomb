@@ -961,15 +961,15 @@ class Projectile {
         }
 
         if (this.type.type === 'homing') {
-            let nearest = null; let minD = 400;
-            entities.forEach(e => {
-                if(e.id !== this.ownerId && !e.dead) {
-                    if (CONFIG.GAME_MODE === 'DM' || e.team !== this.team) {
-                        let d = distSq(this.pos, e.pos);
-                        if(d < minD * minD) { minD = Math.sqrt(d); nearest = e; }
-                    }
-                }
-            });
+            let nearest = null;
+            let minDSq = 400 * 400;
+            for (let i = 0; i < entities.length; i++) {
+                const e = entities[i];
+                if (e.id === this.ownerId || e.dead) continue;
+                if (CONFIG.GAME_MODE !== 'DM' && e.team === this.team) continue;
+                const d = distSq(this.pos, e.pos);
+                if (d < minDSq) { minDSq = d; nearest = e; }
+            }
             if(nearest) {
                 let dir = nearest.pos.sub(this.pos).normalize().mult(0.3);
                 this.vel = this.vel.add(dir);
@@ -984,7 +984,7 @@ class Projectile {
              this.vel.y += CONFIG.PROJECTILE_GRAVITY;
         } else if (this.type.type === 'blackhole') {
              this.vel = this.vel.mult(0.98); 
-             if (this.vel.mag() < 0.3) { this.explode(terrain, particleSystem, entities, game); return; }
+             if (this.vel.mag() < 0.3) { this.explode(terrain, particleSystem, game); return; }
         } else if (this.type.type === 'highspeed') {
              this.vel.y += 0.01; 
         }
@@ -998,7 +998,8 @@ class Projectile {
         // Check against terrain first to prevent shooting through walls
         let hitWall = terrain.raycast(this.pos, nextPos);
         
-        for (let ent of entities) {
+        for (let i = 0; i < entities.length; i++) {
+            const ent = entities[i];
             if (ent.dead) continue;
             if (ent.id === this.ownerId && distSq(this.pos, ent.pos) < 20 * 20) continue; 
             if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team) continue;
@@ -1019,7 +1020,7 @@ class Projectile {
 
         if (hitEntity && !hitWall) {
              this.pos = hitEntity.pos.clone().sub(this.vel.normalize().mult(5)); // Visual fix
-             this.explode(terrain, particleSystem, entities, game);
+             this.explode(terrain, particleSystem, game);
              return;
         }
         
@@ -1035,7 +1036,7 @@ class Projectile {
                  this.vel = this.vel.mult(0.96); 
                  this.pos = nextPos;
                  if(Math.random() < 0.1) particleSystem.emit(this.pos.clone(), new Vector2((Math.random()-0.5)*2, -2), 10, '#fff', 'spark');
-                 if (this.vel.mag() < 0.5) this.explode(terrain, particleSystem, entities, game);
+                 if (this.vel.mag() < 0.5) this.explode(terrain, particleSystem, game);
                  return;
              } 
              if (this.type.type === 'teleport') {
@@ -1061,14 +1062,14 @@ class Projectile {
                  
                  // FIX: Stop and Explode if too slow (prevents sliding through ground)
                  if (this.vel.mag() < 0.5 && this.type.type === 'bounce') {
-                     this.explode(terrain, particleSystem, entities, game);
+                     this.explode(terrain, particleSystem, game);
                      return;
                  }
                  
                  if (this.type.type !== 'bounce') this.bounces--;
              } else {
                  this.pos = nextPos;
-                 this.explode(terrain, particleSystem, entities, game);
+                 this.explode(terrain, particleSystem, game);
              }
         } else {
              this.pos = nextPos;
@@ -1079,7 +1080,7 @@ class Projectile {
         }
     }
 
-    explode(terrain, particleSystem, entities, game) {
+    explode(terrain, particleSystem, game) {
         this.active = false;
         if (this.pos.y > CONFIG.WORLD_HEIGHT) return;
 
@@ -1108,24 +1109,26 @@ class Projectile {
 
         if (this.type.type !== 'laser') terrain.destroy(this.pos.x, this.pos.y, this.type.radius, this.type.type);
         
-        entities.forEach(ent => {
-            if (!ent.dead) {
-                if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team && ent.id !== this.ownerId) return;
+        const dmgRadius = this.type.radius + 20;
+        const dmgRadiusSq = dmgRadius * dmgRadius;
+        let attacker = null;
+        for (let i = 0; i < game.entities.length; i++) {
+            const ent = game.entities[i];
+            if (ent.id === this.ownerId) attacker = ent;
+            if (ent.dead) continue;
+            if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team && ent.id !== this.ownerId) continue;
+            const dSq = distSq(this.pos, ent.pos);
+            if (dSq < dmgRadiusSq) {
+                const d = Math.sqrt(dSq);
+                let damage = this.type.damage * (1 - d / dmgRadius);
+                if (attacker && attacker.damageMultiplier) damage *= attacker.damageMultiplier;
 
-                let d = this.pos.dist(ent.pos);
-                let dmgRadius = this.type.radius + 20; 
-                if (d < dmgRadius) {
-                    let damage = this.type.damage * (1 - d / dmgRadius);
-                    let attacker = game.entities.find(e => e.id === this.ownerId);
-                    if (attacker && attacker.damageMultiplier) damage *= attacker.damageMultiplier;
-
-                    if(this.type.type === 'laser') damage = this.type.damage; 
-                    ent.takeDamage(damage < 0 ? 0 : damage, this.ownerId, game);
-                    let pushDir = ent.pos.sub(this.pos).normalize();
-                    ent.vel = ent.vel.add(pushDir.mult(4)); 
-                }
+                if(this.type.type === 'laser') damage = this.type.damage; 
+                ent.takeDamage(damage < 0 ? 0 : damage, this.ownerId, game);
+                let pushDir = ent.pos.sub(this.pos).normalize();
+                ent.vel = ent.vel.add(pushDir.mult(4)); 
             }
-        });
+        }
 
         let count = 10; let color = this.type.color; let type = 'normal';
         if (this.type.type === 'energy' || this.type.type === 'blaster') { color = '#00ffcc'; type = 'glow'; count = 15; }
@@ -2184,22 +2187,6 @@ class Game {
     
     updateInventoryUI() {
         let container = document.getElementById('inventory-container'); container.innerHTML = '';
-        const weaponIcons = {
-            blaster: `<svg viewBox="0 0 64 64"><rect x="8" y="26" width="32" height="12" rx="4"/><rect x="40" y="28" width="14" height="8" rx="2"/><rect x="14" y="38" width="8" height="10" rx="2"/><circle cx="48" cy="32" r="3"/></svg>`,
-            explosive: `<svg viewBox="0 0 64 64"><circle cx="28" cy="36" r="12"/><rect x="36" y="18" width="16" height="6" rx="2"/><rect x="50" y="16" width="6" height="10" rx="2"/></svg>`,
-            bounce: `<svg viewBox="0 0 64 64"><circle cx="28" cy="36" r="10"/><path d="M40 24h12l-6 8z"/><rect x="18" y="46" width="20" height="4" rx="2"/></svg>`,
-            drill: `<svg viewBox="0 0 64 64"><rect x="10" y="28" width="24" height="10" rx="3"/><polygon points="34,28 54,32 34,38"/><rect x="12" y="40" width="8" height="8" rx="2"/></svg>`,
-            energy: `<svg viewBox="0 0 64 64"><rect x="10" y="26" width="28" height="12" rx="4"/><polygon points="34,24 54,32 34,40"/><circle cx="20" cy="32" r="3"/></svg>`,
-            molotov: `<svg viewBox="0 0 64 64"><rect x="28" y="12" width="8" height="10" rx="2"/><circle cx="32" cy="36" r="12"/><path d="M28 18h8l-4 10z"/></svg>`,
-            blackhole: `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="16"/><circle cx="32" cy="32" r="6"/><path d="M10 32h10M44 32h10" /></svg>`,
-            shotgun: `<svg viewBox="0 0 64 64"><rect x="8" y="28" width="36" height="6" rx="3"/><rect x="8" y="36" width="30" height="6" rx="3"/><rect x="4" y="30" width="8" height="10" rx="3"/></svg>`,
-            highspeed: `<svg viewBox="0 0 64 64"><rect x="6" y="30" width="40" height="4" rx="2"/><rect x="14" y="22" width="18" height="6" rx="2"/><rect x="4" y="34" width="10" height="8" rx="2"/></svg>`,
-            rapid: `<svg viewBox="0 0 64 64"><rect x="8" y="24" width="30" height="16" rx="4"/><rect x="38" y="26" width="16" height="12" rx="3"/><rect x="14" y="40" width="8" height="8" rx="2"/></svg>`,
-            homing: `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="12"/><circle cx="32" cy="32" r="4"/><path d="M32 14v6M32 44v6M14 32h6M44 32h6"/></svg>`,
-            teleport: `<svg viewBox="0 0 64 64"><rect x="22" y="28" width="20" height="8" rx="4"/><circle cx="32" cy="20" r="6"/><circle cx="32" cy="44" r="6"/></svg>`,
-            laser: `<svg viewBox="0 0 64 64"><rect x="8" y="28" width="40" height="8" rx="4"/><rect x="48" y="30" width="8" height="4" rx="2"/><rect x="14" y="24" width="18" height="4" rx="2"/></svg>`,
-            nuke: `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="14"/><circle cx="32" cy="32" r="5"/><path d="M32 18v8M18 32h8M38 32h8M32 38v8"/></svg>`
-        };
         for(let i=0; i<CONFIG.MAX_INVENTORY; i++) {
             let div = document.createElement('div'); div.className = 'inv-slot locked';
             const keySpan = document.createElement('span');
@@ -2209,7 +2196,6 @@ class Game {
             if (i < this.player.inventory.length) {
                 let w = this.player.inventory[i];
                 div.className = 'inv-slot' + (this.player.weaponIndex === i ? ' active' : '');
-                const icon = weaponIcons[w.type] || weaponIcons.blaster;
                 const iconWrap = document.createElement('div');
                 iconWrap.className = 'slot-icon';
                 iconWrap.style.color = w.color;
@@ -2217,15 +2203,12 @@ class Game {
                 iconImg.className = 'slot-icon-img';
                 iconImg.src = `Assets/Images/${w.type}.jpg`;
                 iconImg.alt = w.name;
-                iconImg.onerror = () => {
-                    iconWrap.classList.add('slot-icon--fallback');
-                };
-                const iconSvg = document.createElement('div');
-                iconSvg.className = 'slot-icon-svg';
-                iconSvg.innerHTML = icon;
                 iconWrap.appendChild(iconImg);
-                iconWrap.appendChild(iconSvg);
                 div.appendChild(iconWrap);
+                const nameLabel = document.createElement('div');
+                nameLabel.className = 'slot-name';
+                nameLabel.textContent = w.name;
+                div.appendChild(nameLabel);
                 div.onclick = () => { this.player.switchWeapon(i); this.updateInventoryUI(); };
             }
             container.appendChild(div);
@@ -2334,7 +2317,7 @@ class Game {
         this.crates.forEach(c => c.update(this.terrain));
         this.flags.forEach(f => f.update(this.terrain, this.entities, this));
         for (let i = this.projectiles.length - 1; i >= 0; i--) { 
-            let p = this.projectiles[i]; p.update(this.terrain, this.particleSystem, this.entities, this); 
+            let p = this.projectiles[i]; p.update(this.terrain, this.particleSystem, this.aliveEntities, this); 
             if (!p.active) this.projectiles.splice(i, 1); 
         }
         this.fires = this.fires.filter(f => f.update(this));
