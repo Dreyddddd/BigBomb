@@ -130,6 +130,9 @@ function getHeadImage(headId) {
     if (!headId) return null;
     if (!headImageCache.has(headId)) {
         const img = new Image();
+        img.onload = () => {
+            if (typeof updateLobbyPreview === 'function') updateLobbyPreview();
+        };
         img.src = `assets/images/heads/${headId}.png`;
         headImageCache.set(headId, img);
     }
@@ -1703,8 +1706,8 @@ class Character {
         if (headImg && headImg.complete && headImg.naturalWidth > 0) {
             const headSize = 26;
             ctx.save();
-            ctx.scale(1, -1);
-            ctx.drawImage(headImg, -headSize / 2, 24 - headSize, headSize, headSize);
+            ctx.scale(-1, 1);
+            ctx.drawImage(headImg, -headSize / 2, -24, headSize, headSize);
             ctx.restore();
         } else {
             ctx.fillStyle = '#f1c40f';
@@ -2361,7 +2364,7 @@ class Game {
                 iconWrap.style.color = w.color;
                 const iconImg = document.createElement('img');
                 iconImg.className = 'slot-icon-img';
-                iconImg.src = `Assets/Images/WeaponIcons/${w.type}.png`;
+                iconImg.src = `Assets/Images/WeaponIcons/${w.type}.jpg`;
                 iconImg.alt = w.name;
                 iconWrap.appendChild(iconImg);
                 div.appendChild(iconWrap);
@@ -2699,6 +2702,7 @@ function populateCosmeticsSelects() {
     const accessorySelect = document.getElementById('player-accessory-select');
     if (headSelect && headSelect.options.length === 0) {
         COSMETICS.heads.forEach(opt => headSelect.add(new Option(opt.label, opt.id)));
+        headSelect.value = cosmetics.head;
     }
     if (outfitSelect && outfitSelect.options.length === 0) {
         COSMETICS.outfits.forEach(opt => outfitSelect.add(new Option(opt.label, opt.id)));
