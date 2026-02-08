@@ -232,7 +232,7 @@ body {
     word-wrap: break-word;
     text-shadow: 1px 1px 0px #000;
     color: #f2f2f2;
-    margin-top: 4px;
+    margin-top: -2px;
 }
 
 .slot-icon {
@@ -246,8 +246,8 @@ body {
 }
 
 .slot-icon-img {
-    width: 48px;
-    height: 48px;
+    width: 66px;
+    height: 66px;
     object-fit: contain;
     display: block;
 }
