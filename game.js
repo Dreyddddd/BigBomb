@@ -175,7 +175,7 @@ function getBodyImage(bodyId) {
         img.onload = () => {
             if (typeof updateLobbyPreview === 'function') updateLobbyPreview();
         };
-        img.src = `images/bodyes/${bodyId}.png`;
+        img.src = `Assets/Images/Bodyes/${bodyId}.png`;
         bodyImageCache.set(bodyId, img);
     }
     return bodyImageCache.get(bodyId);
@@ -1705,11 +1705,11 @@ class Character {
 
         const bodyImg = getBodyImage(cosmetics.body);
         if (bodyImg && bodyImg.complete && bodyImg.naturalWidth > 0) {
-            const bodyWidth = 20;
-            const bodyHeight = 24;
+            const bodyWidth = 28;
+            const bodyHeight = 27;
             ctx.save();
             ctx.scale(-1, 1);
-            ctx.drawImage(bodyImg, -bodyWidth / 2, -10, bodyWidth, bodyHeight);
+            ctx.drawImage(bodyImg, -bodyWidth / 2, -17, bodyWidth, bodyHeight);
             ctx.restore();
         } else {
             ctx.fillStyle = this.color;
@@ -2359,7 +2359,7 @@ class Game {
                 iconWrap.style.color = w.color;
                 const iconImg = document.createElement('img');
                 iconImg.className = 'slot-icon-img';
-                iconImg.src = `Assets/Images/WeaponIcons/${w.type}.png`;
+                iconImg.src = `Assets/Images/WeaponIcons/${w.type}.jpg`;
                 iconImg.alt = w.name;
                 iconWrap.appendChild(iconImg);
                 div.appendChild(iconWrap);
@@ -2621,14 +2621,17 @@ function openLobby(fromScreen) {
     document.getElementById('bot-count-val').innerText = CONFIG.BOT_COUNT;
     document.getElementById('frag-limit-input').value = CONFIG.WIN_LIMIT; 
     document.getElementById('frag-limit-val').innerText = CONFIG.WIN_LIMIT;
-    const cosmetics = gameInstance?.playerCosmetics || defaultCosmetics();
+    const cosmetics = { ...defaultCosmetics(), ...(gameInstance?.playerCosmetics || {}) };
+    if (gameInstance) {
+        gameInstance.playerCosmetics = { ...cosmetics };
+    }
     const headSelect = document.getElementById('player-head-select');
     const bodySelect = document.getElementById('player-body-select');
     const lobbyName = document.getElementById('lobby-nickname-input');
     if (lobbyName) lobbyName.value = document.getElementById('nickname-input')?.value || '';
+    populateCosmeticsSelects();
     if (headSelect) headSelect.value = cosmetics.head;
     if (bodySelect) bodySelect.value = cosmetics.body;
-    populateCosmeticsSelects();
     updateLobbyPreview();
 }
 
