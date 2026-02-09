@@ -182,13 +182,13 @@ const PowerUpType = {
 };
 
 const WeaponType = {
-    PISTOL:     { name: "Бластер", color: '#3498db', radius: 15, damage: 8, infinite: true, type: 'blaster', cooldown: 45, chargeable: false }, 
-    BAZOOKA:    { name: "Базука", color: '#e74c3c', radius: 60, damage: 35, type: 'explosive', burn: 3, cooldown: 40, chargeable: true }, 
+    PISTOL:     { name: "Бластер", color: '#3498db', radius: 15, damage: 8, infinite: true, type: 'blaster', cooldown: 70, chargeable: false }, 
+    BAZOOKA:    { name: "Базука", color: '#e74c3c', radius: 60, damage: 35, type: 'explosive', burn: 3, cooldown: 60, chargeable: true }, 
     GRENADE:    { name: "Граната", color: '#27ae60', radius: 70, damage: 45, type: 'bounce', cooldown: 45, chargeable: true },
     DRILL:      { name: "Бур", color: '#f39c12', radius: 25, damage: 15, specialized: true, type: 'drill', cooldown: 40, chargeable: true },
-    PLASMA:     { name: "Плазма", color: '#00ffcc', radius: 45, damage: 30, bounces: 2, type: 'energy', cooldown: 50, chargeable: true },
+    PLASMA:     { name: "Плазма", color: '#00ffcc', radius: 45, damage: 30, bounces: 2, type: 'energy', cooldown: 70, chargeable: true },
     MOLOTOV:    { name: "Молотов", color: '#e67e22', radius: 30, damage: 15, type: 'molotov', burn: 15, cooldown: 50, chargeable: true },
-    SINGULARITY:{ name: "Дыра", color: '#8e44ad', radius: 100, damage: 999, type: 'blackhole', cooldown: 120, chargeable: true }, 
+    SINGULARITY:{ name: "Дыра", color: '#8e44ad', radius: 100, damage: 999, type: 'blackhole', cooldown: 160, chargeable: true }, 
     
     SHOTGUN:    { name: "Дробовик", color: '#f1c40f', radius: 10, damage: 8, type: 'shotgun', count: 5, spread: 0.3, cooldown: 50, chargeable: false }, 
     SNIPER:     { name: "Снайперка", color: '#ffe082', radius: 5, damage: 60, type: 'highspeed', cooldown: 70, chargeable: false }, 
@@ -196,7 +196,7 @@ const WeaponType = {
     HOMING:     { name: "Самонавод", color: '#ff00ff', radius: 40, damage: 25, type: 'homing', cooldown: 60, chargeable: true },
     TELEPORT:   { name: "Телепорт", color: '#3498db', radius: 0, damage: 0, type: 'teleport', cooldown: 60, chargeable: true },
     LASER:      { name: "Лазер", color: '#e74c3c', radius: 5, damage: 40, type: 'laser', cooldown: 80, chargeable: false },
-    NUKE:       { name: "Ядерка", color: '#2c3e50', radius: 250, damage: 100, type: 'nuke', cooldown: 100, chargeable: true }
+    NUKE:       { name: "Ядерка", color: '#2c3e50', radius: 250, damage: 100, type: 'nuke', cooldown: 140, chargeable: true }
 };
 
 const Materials = {
@@ -1089,7 +1089,19 @@ class Projectile {
             }
         }
 
-        if (game.tick % 3 === 0) { this.trail.push(this.pos.clone()); if (this.trail.length > 10) this.trail.shift(); }
+        let trailStride = 3;
+        let maxTrail = 10;
+        if (this.type.type === 'blaster' || this.type.type === 'rapid') {
+            trailStride = 8;
+            maxTrail = 0;
+        } else if (this.type.type === 'shotgun') {
+            trailStride = 4;
+            maxTrail = 8;
+        }
+        if (maxTrail > 0 && game.tick % trailStride === 0) {
+            this.trail.push(this.pos.clone());
+            if (this.trail.length > maxTrail) this.trail.shift();
+        }
 
         if (this.type.type !== 'energy' && this.type.type !== 'blackhole' && this.type.type !== 'laser' && this.type.type !== 'highspeed' && this.type.type !== 'blaster' && this.type.type !== 'shotgun' && this.type.type !== 'rapid') {
              this.vel = this.vel.mult(CONFIG.PROJECTILE_DRAG);
@@ -1114,6 +1126,9 @@ class Projectile {
         } else if (speed > 6) {
             raycastStride = 2;
         }
+        if (this.type.type === 'blaster' || this.type.type === 'rapid' || this.type.type === 'shotgun') {
+            raycastStride = Math.max(raycastStride, 5);
+        }
         const shouldRaycast = raycastStride === 1 || (game.tick + this.ownerId) % raycastStride === 0;
         
         // Check against terrain first to prevent shooting through walls
@@ -1121,24 +1136,27 @@ class Projectile {
         const segmentMid = this.pos.add(nextPos).mult(0.5);
         const segmentRadius = Math.max(60, this.pos.dist(nextPos) / 2 + 30);
         const candidates = game.getNearbyEntities(segmentMid, segmentRadius);
+        const shouldCheckEntities = !(this.type.type === 'blaster' || this.type.type === 'rapid') || (game.tick + this.ownerId) % 2 === 0;
         
-        for (let i = 0; i < candidates.length; i++) {
-            const ent = candidates[i];
-            if (ent.dead) continue;
-            if (ent.id === this.ownerId && distSq(this.pos, ent.pos) < 20 * 20) continue; 
-            if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team) continue;
-            
-            // Check distance from entity center to the movement segment
-            let distToTrajectory = distToSegmentSquared(ent.pos, this.pos, nextPos);
-            let hitRadius = (this.type.type === 'laser' ? 10 : 15); // Increased laser hit radius
-            
-            if (distToTrajectory < hitRadius * hitRadius) {
-                 // Check if this hit is closer than previous hits
-                 let d = distSq(this.pos, ent.pos);
-                 if (d < closestDist) {
-                     closestDist = d;
-                     hitEntity = ent;
-                 }
+        if (shouldCheckEntities) {
+            for (let i = 0; i < candidates.length; i++) {
+                const ent = candidates[i];
+                if (ent.dead) continue;
+                if (ent.id === this.ownerId && distSq(this.pos, ent.pos) < 20 * 20) continue; 
+                if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team) continue;
+                
+                // Check distance from entity center to the movement segment
+                let distToTrajectory = distToSegmentSquared(ent.pos, this.pos, nextPos);
+                let hitRadius = (this.type.type === 'laser' ? 10 : 15); // Increased laser hit radius
+                
+                if (distToTrajectory < hitRadius * hitRadius) {
+                     // Check if this hit is closer than previous hits
+                     let d = distSq(this.pos, ent.pos);
+                     if (d < closestDist) {
+                         closestDist = d;
+                         hitEntity = ent;
+                     }
+                }
             }
         }
 
@@ -1272,24 +1290,36 @@ class Projectile {
         if (this.type.type === 'blaster') {
             ctx.save();
             ctx.globalCompositeOperation = 'lighter';
-            let tail = this.pos.sub(this.vel.normalize().mult(26));
-            let glow = ctx.createRadialGradient(this.pos.x, this.pos.y, 0, this.pos.x, this.pos.y, 16);
-            glow.addColorStop(0, 'rgba(255,255,255,0.9)');
-            glow.addColorStop(0.5, 'rgba(52, 152, 219, 0.6)');
-            glow.addColorStop(1, 'rgba(52, 152, 219, 0)');
-            ctx.fillStyle = glow;
+            const dir = this.vel.normalize();
+            const trailLen = 38;
+            const tail = this.pos.sub(dir.mult(trailLen));
+            const angle = Math.atan2(dir.y, dir.x);
+
+            ctx.strokeStyle = 'rgba(120, 200, 255, 0.25)';
+            ctx.lineWidth = 10;
             ctx.beginPath();
-            ctx.arc(this.pos.x, this.pos.y, 12, 0, Math.PI * 2);
+            ctx.moveTo(tail.x, tail.y); ctx.lineTo(this.pos.x, this.pos.y); ctx.stroke();
+
+            ctx.strokeStyle = 'rgba(80, 170, 255, 0.7)';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(tail.x, tail.y); ctx.lineTo(this.pos.x, this.pos.y); ctx.stroke();
+
+            ctx.strokeStyle = '#e6f7ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(tail.x, tail.y); ctx.lineTo(this.pos.x, this.pos.y); ctx.stroke();
+
+            ctx.save();
+            ctx.translate(this.pos.x, this.pos.y);
+            ctx.rotate(angle);
+            ctx.fillStyle = 'rgba(150, 220, 255, 0.9)';
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = 'rgba(120, 200, 255, 0.9)';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 6, 2.2, 0, 0, Math.PI * 2);
             ctx.fill();
-
-            ctx.shadowBlur = 18; ctx.shadowColor = this.type.color;
-            ctx.strokeStyle = this.type.color; ctx.lineWidth = 6;
-            ctx.beginPath();
-            ctx.moveTo(tail.x, tail.y); ctx.lineTo(this.pos.x, this.pos.y); ctx.stroke();
-
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(tail.x, tail.y); ctx.lineTo(this.pos.x, this.pos.y); ctx.stroke();
+            ctx.restore();
             ctx.restore();
             return;
         }
@@ -1383,7 +1413,7 @@ class Character {
         this.buffs = [];
         this.jumpMultiplier = 1; this.speedMultiplier = 1; this.damageMultiplier = 1; this.isShielded = false;
         this.cosmetics = cosmetics ? { ...defaultCosmetics(), ...cosmetics } : defaultCosmetics();
-        this.headCollider = { offsetY: -28, radius: 15 };
+        this.headCollider = { offsetY: -30, radius: 17 };
         
         this.respawnTimer = 0; // CTF Individual Timer
     }
@@ -1446,8 +1476,8 @@ class Character {
     update(terrain, projectiles, crates, game) {
         this.updateBuffs();
         this.animTimer += 0.1;
-        this.headCollider.offsetY = -28;
-        this.headCollider.radius = 15;
+        this.headCollider.offsetY = -30;
+        this.headCollider.radius = 17;
         
         // CTF Respawn
         if (this.dead && CONFIG.GAME_MODE === 'CTF') {
@@ -1640,15 +1670,15 @@ class Character {
 
         const headImg = getHeadImage(cosmetics.head);
         if (headImg && headImg.complete && headImg.naturalWidth > 0) {
-            const headSize = 29;
+            const headSize = 32;
             ctx.save();
             ctx.scale(-1, 1);
-            ctx.drawImage(headImg, -headSize / 2, -28, headSize, headSize);
+            ctx.drawImage(headImg, -headSize / 2, -30, headSize, headSize);
             ctx.restore();
         } else {
             ctx.fillStyle = '#f1c40f';
-            ctx.beginPath(); ctx.arc(0, -18, 10, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#000'; ctx.fillRect(1, -16, 5, 2);
+            ctx.beginPath(); ctx.arc(0, -20, 11, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#000'; ctx.fillRect(1, -18, 5, 2);
         }
 
         let aimX = this.input.aimTarget.x - this.pos.x;
