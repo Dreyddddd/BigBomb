@@ -186,9 +186,9 @@ const WeaponType = {
     BAZOOKA:    { name: "Базука", color: '#e74c3c', radius: 60, damage: 35, type: 'explosive', burn: 3, cooldown: 60, chargeable: true }, 
     GRENADE:    { name: "Граната", color: '#27ae60', radius: 70, damage: 45, type: 'bounce', cooldown: 45, chargeable: true },
     DRILL:      { name: "Бур", color: '#f39c12', radius: 25, damage: 15, specialized: true, type: 'drill', cooldown: 40, chargeable: true },
-    PLASMA:     { name: "Плазма", color: '#00ffcc', radius: 45, damage: 30, bounces: 2, type: 'energy', cooldown: 70, chargeable: true },
+    PLASMA:     { name: "Плазма", color: '#00ffcc', radius: 45, damage: 30, bounces: 2, type: 'energy', cooldown: 140, chargeable: true },
     MOLOTOV:    { name: "Молотов", color: '#e67e22', radius: 30, damage: 15, type: 'molotov', burn: 15, cooldown: 50, chargeable: true },
-    SINGULARITY:{ name: "Дыра", color: '#8e44ad', radius: 100, damage: 999, type: 'blackhole', cooldown: 160, chargeable: true }, 
+    SINGULARITY:{ name: "Дыра", color: '#8e44ad', radius: 100, damage: 999, type: 'blackhole', cooldown: 320, chargeable: true }, 
     
     SHOTGUN:    { name: "Дробовик", color: '#f1c40f', radius: 10, damage: 8, type: 'shotgun', count: 5, spread: 0.3, cooldown: 50, chargeable: false }, 
     SNIPER:     { name: "Снайперка", color: '#ffe082', radius: 5, damage: 60, type: 'highspeed', cooldown: 70, chargeable: false }, 
@@ -196,7 +196,7 @@ const WeaponType = {
     HOMING:     { name: "Самонавод", color: '#ff00ff', radius: 40, damage: 25, type: 'homing', cooldown: 60, chargeable: true },
     TELEPORT:   { name: "Телепорт", color: '#3498db', radius: 0, damage: 0, type: 'teleport', cooldown: 60, chargeable: true },
     LASER:      { name: "Лазер", color: '#e74c3c', radius: 5, damage: 40, type: 'laser', cooldown: 80, chargeable: false },
-    NUKE:       { name: "Ядерка", color: '#2c3e50', radius: 250, damage: 100, type: 'nuke', cooldown: 140, chargeable: true }
+    NUKE:       { name: "Ядерка", color: '#2c3e50', radius: 250, damage: 100, type: 'nuke', cooldown: 280, chargeable: true }
 };
 
 const Materials = {
@@ -1413,7 +1413,7 @@ class Character {
         this.buffs = [];
         this.jumpMultiplier = 1; this.speedMultiplier = 1; this.damageMultiplier = 1; this.isShielded = false;
         this.cosmetics = cosmetics ? { ...defaultCosmetics(), ...cosmetics } : defaultCosmetics();
-        this.headCollider = { offsetY: -30, radius: 17 };
+        this.headCollider = { offsetY: -34, radius: 17 };
         
         this.respawnTimer = 0; // CTF Individual Timer
     }
@@ -1476,7 +1476,7 @@ class Character {
     update(terrain, projectiles, crates, game) {
         this.updateBuffs();
         this.animTimer += 0.1;
-        this.headCollider.offsetY = -30;
+        this.headCollider.offsetY = -34;
         this.headCollider.radius = 17;
         
         // CTF Respawn
@@ -1673,12 +1673,12 @@ class Character {
             const headSize = 32;
             ctx.save();
             ctx.scale(-1, 1);
-            ctx.drawImage(headImg, -headSize / 2, -30, headSize, headSize);
+            ctx.drawImage(headImg, -headSize / 2, -34, headSize, headSize);
             ctx.restore();
         } else {
             ctx.fillStyle = '#f1c40f';
-            ctx.beginPath(); ctx.arc(0, -20, 11, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#000'; ctx.fillRect(1, -18, 5, 2);
+            ctx.beginPath(); ctx.arc(0, -24, 11, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#000'; ctx.fillRect(1, -22, 5, 2);
         }
 
         let aimX = this.input.aimTarget.x - this.pos.x;
