@@ -133,6 +133,16 @@ const COSMETICS = {
         { id: '9', label: 'Тип 9' },
         { id: '10', label: 'Тип 10' },
         { id: '11', label: 'Тип 11' }
+    ],
+    bodies: [
+        { id: '1', label: 'Тело 1' },
+        { id: '2', label: 'Тело 2' },
+        { id: '3', label: 'Тело 3' },
+        { id: '4', label: 'Тело 4' },
+        { id: '5', label: 'Тело 5' },
+        { id: '6', label: 'Тело 6' },
+        { id: '7', label: 'Тело 7' },
+        { id: '8', label: 'Тело 8' }
     ]
 };
 
@@ -157,9 +167,24 @@ function getHeadImage(headId) {
     return headImageCache.get(headId);
 }
 
+const bodyImageCache = new Map();
+function getBodyImage(bodyId) {
+    if (!bodyId) return null;
+    if (!bodyImageCache.has(bodyId)) {
+        const img = new Image();
+        img.onload = () => {
+            if (typeof updateLobbyPreview === 'function') updateLobbyPreview();
+        };
+        img.src = `images/bodyes/${bodyId}.png`;
+        bodyImageCache.set(bodyId, img);
+    }
+    return bodyImageCache.get(bodyId);
+}
+
 function defaultCosmetics() {
     return {
-        head: '1'
+        head: '1',
+        body: '1'
     };
 }
 
@@ -167,7 +192,8 @@ function randomBotCosmetics() {
     return {
         color: randomChoice(BOT_COLORS),
         cosmetics: {
-            head: randomChoice(COSMETICS.heads).id
+            head: randomChoice(COSMETICS.heads).id,
+            body: randomChoice(COSMETICS.bodies).id
         }
     };
 }
@@ -1645,7 +1671,11 @@ class Character {
         });
 
         // Name
-        ctx.fillStyle = 'white'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.fillText(this.name, 0, -38);
+        let nameColor = 'white';
+        if (CONFIG.GAME_MODE !== 'DM' && this.team !== 0) {
+            nameColor = TEAMS[this.team]?.color || 'white';
+        }
+        ctx.fillStyle = nameColor; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.fillText(this.name, 0, -38);
         ctx.fillStyle = '#333'; ctx.fillRect(-15, -35, 30, 4);
         ctx.fillStyle = this.hp > 50 ? '#2ecc71' : '#e74c3c'; ctx.fillRect(-15, -35, 30 * (this.hp / 100), 4);
 
@@ -1663,10 +1693,20 @@ class Character {
         ctx.translate(0, breathe);
         const cosmetics = this.cosmetics || defaultCosmetics();
 
-        ctx.fillStyle = this.color;
-        ctx.beginPath(); ctx.roundRect(-8, -10, 16, 20, 6); ctx.fill();
-        ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(-6, -8, 12, 14);
-        ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(-7, -9, 5, 7);
+        const bodyImg = getBodyImage(cosmetics.body);
+        if (bodyImg && bodyImg.complete && bodyImg.naturalWidth > 0) {
+            const bodyWidth = 20;
+            const bodyHeight = 24;
+            ctx.save();
+            ctx.scale(-1, 1);
+            ctx.drawImage(bodyImg, -bodyWidth / 2, -10, bodyWidth, bodyHeight);
+            ctx.restore();
+        } else {
+            ctx.fillStyle = this.color;
+            ctx.beginPath(); ctx.roundRect(-8, -10, 16, 20, 6); ctx.fill();
+            ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(-6, -8, 12, 14);
+            ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(-7, -9, 5, 7);
+        }
 
         const headImg = getHeadImage(cosmetics.head);
         if (headImg && headImg.complete && headImg.naturalWidth > 0) {
@@ -2573,9 +2613,11 @@ function openLobby(fromScreen) {
     document.getElementById('frag-limit-val').innerText = CONFIG.WIN_LIMIT;
     const cosmetics = gameInstance?.playerCosmetics || defaultCosmetics();
     const headSelect = document.getElementById('player-head-select');
+    const bodySelect = document.getElementById('player-body-select');
     const lobbyName = document.getElementById('lobby-nickname-input');
     if (lobbyName) lobbyName.value = document.getElementById('nickname-input')?.value || '';
     if (headSelect) headSelect.value = cosmetics.head;
+    if (bodySelect) bodySelect.value = cosmetics.body;
     populateCosmeticsSelects();
     updateLobbyPreview();
 }
@@ -2605,7 +2647,9 @@ function closeLobby() {
 function getPlayerCosmeticsFromUI(current) {
     const cosmetics = { ...defaultCosmetics(), ...(current || {}) };
     const headSelect = document.getElementById('player-head-select');
+    const bodySelect = document.getElementById('player-body-select');
     if (headSelect) cosmetics.head = headSelect.value;
+    if (bodySelect) cosmetics.body = bodySelect.value;
     return cosmetics;
 }
 
@@ -2619,12 +2663,18 @@ function startGameFromLobby() {
 
 function populateCosmeticsSelects() {
     const headSelect = document.getElementById('player-head-select');
+    const bodySelect = document.getElementById('player-body-select');
     const cosmetics = getPlayerCosmeticsFromUI(gameInstance?.playerCosmetics);
     if (headSelect && headSelect.options.length === 0) {
         COSMETICS.heads.forEach(opt => headSelect.add(new Option(opt.label, opt.id)));
         headSelect.value = cosmetics.head;
     }
+    if (bodySelect && bodySelect.options.length === 0) {
+        COSMETICS.bodies.forEach(opt => bodySelect.add(new Option(opt.label, opt.id)));
+        bodySelect.value = cosmetics.body;
+    }
     if (headSelect) headSelect.value = cosmetics.head || headSelect.value;
+    if (bodySelect) bodySelect.value = cosmetics.body || bodySelect.value;
 }
 
 function updateLobbyPreview() {
