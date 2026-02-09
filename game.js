@@ -35,6 +35,50 @@ function distSq(a, b) {
     return dx * dx + dy * dy;
 }
 
+class SpatialGrid {
+    constructor(cellSize, width, height) {
+        this.cellSize = cellSize;
+        this.width = width;
+        this.height = height;
+        this.cells = new Map();
+    }
+
+    clear() {
+        this.cells.clear();
+    }
+
+    insert(entity) {
+        const cx = Math.floor(entity.pos.x / this.cellSize);
+        const cy = Math.floor(entity.pos.y / this.cellSize);
+        const key = `${cx},${cy}`;
+        let bucket = this.cells.get(key);
+        if (!bucket) {
+            bucket = [];
+            this.cells.set(key, bucket);
+        }
+        bucket.push(entity);
+    }
+
+    queryRadius(pos, radius) {
+        const minCx = Math.floor((pos.x - radius) / this.cellSize);
+        const maxCx = Math.floor((pos.x + radius) / this.cellSize);
+        const minCy = Math.floor((pos.y - radius) / this.cellSize);
+        const maxCy = Math.floor((pos.y + radius) / this.cellSize);
+        const results = [];
+
+        for (let cy = minCy; cy <= maxCy; cy++) {
+            for (let cx = minCx; cx <= maxCx; cx++) {
+                const bucket = this.cells.get(`${cx},${cy}`);
+                if (!bucket) continue;
+                for (let i = 0; i < bucket.length; i++) {
+                    results.push(bucket[i]);
+                }
+            }
+        }
+        return results;
+    }
+}
+
 
 // --- 2. Константы ---
 const CONFIG = {
@@ -56,7 +100,9 @@ const CONFIG = {
     WIN_LIMIT: 10,
     MAX_INVENTORY: 7,
     GAME_MODE: 'DM', // 'DM', 'TDM', 'CTF'
-    CTF_RESPAWN_TIME: 1200 // 20 seconds * 60 fps
+    CTF_RESPAWN_TIME: 1200, // 20 seconds * 60 fps
+    SPATIAL_GRID_SIZE: 200,
+    COLLISION_BATCH_TICKS: 3
 };
 
 const BOT_NAMES = [
@@ -717,6 +763,7 @@ class Terrain {
         this.dirtPattern = this.createTexture([101, 78, 56], 0.15); 
         this.stonePattern = this.createTexture([100, 100, 100], 0.25); 
         this.bedrockPattern = this.createTexture([40, 40, 40], 0.3); 
+        this.dirtyCollisionRegions = [];
 
         this.generate();
     }
@@ -897,6 +944,46 @@ class Terrain {
         this.collisionData = this.ctx.getImageData(0, 0, this.width, this.height).data;
     }
 
+    queueCollisionUpdate(x, y, radius) {
+        const startX = Math.max(0, Math.floor(x - radius));
+        const endX = Math.min(this.width, Math.ceil(x + radius));
+        const startY = Math.max(0, Math.floor(y - radius));
+        const endY = Math.min(this.height, Math.ceil(y + radius));
+        this.dirtyCollisionRegions.push({ startX, startY, endX, endY });
+    }
+
+    flushCollisionUpdates() {
+        if (this.dirtyCollisionRegions.length === 0) return;
+        let minX = this.width;
+        let minY = this.height;
+        let maxX = 0;
+        let maxY = 0;
+        for (let i = 0; i < this.dirtyCollisionRegions.length; i++) {
+            const region = this.dirtyCollisionRegions[i];
+            minX = Math.min(minX, region.startX);
+            minY = Math.min(minY, region.startY);
+            maxX = Math.max(maxX, region.endX);
+            maxY = Math.max(maxY, region.endY);
+        }
+        this.dirtyCollisionRegions.length = 0;
+
+        const width = Math.max(0, maxX - minX);
+        const height = Math.max(0, maxY - minY);
+        if (width === 0 || height === 0) return;
+
+        const regionData = this.ctx.getImageData(minX, minY, width, height).data;
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const srcIndex = (y * width + x) * 4;
+                const destIndex = ((minY + y) * this.width + (minX + x)) * 4;
+                this.collisionData[destIndex] = regionData[srcIndex];
+                this.collisionData[destIndex + 1] = regionData[srcIndex + 1];
+                this.collisionData[destIndex + 2] = regionData[srcIndex + 2];
+                this.collisionData[destIndex + 3] = regionData[srcIndex + 3];
+            }
+        }
+    }
+
     // --- NEW ROBUST CLIPPING LOGIC ---
     clipToDestructible() {
         const baseW = 500;
@@ -966,47 +1053,8 @@ class Terrain {
         this.ctx.restore(); // Remove Mask
         this.ctx.globalCompositeOperation = 'source-over';
 
-        // 3. COLLISION UPDATE (Manual check still needed for array)
-        let r2 = radius * radius;
-        // Optimization: Bounding box check against World Bounds
-        let startX = Math.floor(Math.max(0, x - radius));
-        let endX = Math.floor(Math.min(this.width, x + radius));
-        let startY = Math.floor(Math.max(0, y - radius));
-        let endY = Math.floor(Math.min(this.height, y + radius));
-
-        const baseW = 500;
-        const baseH = this.height - 400;
-        const bedrockLevel = this.height - 100;
-        const slopeWidth = 600; 
-
-        for (let cy = startY; cy < endY; cy++) {
-            // Bedrock Check only for non-DM
-            if (CONFIG.GAME_MODE !== 'DM' && cy >= bedrockLevel) continue; 
-            
-            for (let cx = startX; cx < endX; cx++) {
-                // Base Protection Checks ONLY for TDM/CTF
-                if (CONFIG.GAME_MODE !== 'DM') {
-                    if (cx < baseW + slopeWidth && cy > baseH) {
-                        if (cx < baseW) continue; // Under flat part
-                        let slopeX = cx - baseW;
-                        let allowedY = baseH + slopeX * ((this.height - baseH)/slopeWidth);
-                        if (cy > allowedY) continue; 
-                    }
-                    if (cx > this.width - baseW - slopeWidth && cy > baseH) {
-                        if (cx > this.width - baseW) continue;
-                        let slopeX = (this.width - baseW) - cx;
-                        let allowedY = baseH + slopeX * ((this.height - baseH)/slopeWidth);
-                        if (cy > allowedY) continue;
-                    }
-                }
-                
-                let dx = cx - x; let dy = cy - y;
-                if (dx*dx + dy*dy <= r2) {
-                    let idx = (cy * this.width + cx) * 4 + 3;
-                    this.collisionData[idx] = 0;
-                }
-            }
-        }
+        // 3. COLLISION UPDATE (Batch updates)
+        this.queueCollisionUpdate(x, y, radius);
         return radius;
     }
 
@@ -1056,17 +1104,18 @@ class Projectile {
         if (this.type.type === 'homing') {
             let nearest = null;
             let minDSq = 400 * 400;
-            for (let i = 0; i < entities.length; i++) {
-                const e = entities[i];
+            const candidates = game.getNearbyEntities(this.pos, 400);
+            for (let i = 0; i < candidates.length; i++) {
+                const e = candidates[i];
                 if (e.id === this.ownerId || e.dead) continue;
                 if (CONFIG.GAME_MODE !== 'DM' && e.team === this.team) continue;
                 const d = distSq(this.pos, e.pos);
                 if (d < minDSq) { minDSq = d; nearest = e; }
             }
-            if(nearest) {
+            if (nearest) {
                 let dir = nearest.pos.sub(this.pos).normalize().mult(0.3);
                 this.vel = this.vel.add(dir);
-                if(this.vel.mag() > 5) this.vel = this.vel.normalize().mult(5);
+                if (this.vel.mag() > 5) this.vel = this.vel.normalize().mult(5);
             }
         }
 
@@ -1088,11 +1137,23 @@ class Projectile {
         let hitEntity = null;
         let closestDist = Infinity;
 
-        // Check against terrain first to prevent shooting through walls
-        let hitWall = terrain.raycast(this.pos, nextPos);
+        const speed = this.vel.mag();
+        let raycastStride = 3;
+        if (this.type.type === 'highspeed' || this.type.type === 'laser' || speed > 10) {
+            raycastStride = 1;
+        } else if (speed > 6) {
+            raycastStride = 2;
+        }
+        const shouldRaycast = raycastStride === 1 || (game.tick + this.ownerId) % raycastStride === 0;
         
-        for (let i = 0; i < entities.length; i++) {
-            const ent = entities[i];
+        // Check against terrain first to prevent shooting through walls
+        let hitWall = shouldRaycast ? terrain.raycast(this.pos, nextPos) : false;
+        const segmentMid = this.pos.add(nextPos).mult(0.5);
+        const segmentRadius = Math.max(60, this.pos.dist(nextPos) / 2 + 30);
+        const candidates = game.getNearbyEntities(segmentMid, segmentRadius);
+        
+        for (let i = 0; i < candidates.length; i++) {
+            const ent = candidates[i];
             if (ent.dead) continue;
             if (ent.id === this.ownerId && distSq(this.pos, ent.pos) < 20 * 20) continue; 
             if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team) continue;
@@ -1194,7 +1255,7 @@ class Projectile {
         }
 
         if (this.type.type === 'nuke') {
-            for(let i=0; i<100; i++) {
+            for(let i=0; i<50; i++) {
                 let v = new Vector2((Math.random()-0.5)*15, -Math.random()*20);
                 game.particleSystem.emit(this.pos.clone(), v, 100 + Math.random()*50, '#f1c40f', 'fire');
             }
@@ -1204,10 +1265,10 @@ class Projectile {
         
         const dmgRadius = this.type.radius + 20;
         const dmgRadiusSq = dmgRadius * dmgRadius;
-        let attacker = null;
-        for (let i = 0; i < game.entities.length; i++) {
-            const ent = game.entities[i];
-            if (ent.id === this.ownerId) attacker = ent;
+        let attacker = game.entities.find(e => e.id === this.ownerId) || null;
+        const candidates = game.getNearbyEntities(this.pos, dmgRadius);
+        for (let i = 0; i < candidates.length; i++) {
+            const ent = candidates[i];
             if (ent.dead) continue;
             if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team && ent.id !== this.ownerId) continue;
             const dSq = distSq(this.pos, ent.pos);
@@ -1352,6 +1413,7 @@ class Character {
         this.buffs = [];
         this.jumpMultiplier = 1; this.speedMultiplier = 1; this.damageMultiplier = 1; this.isShielded = false;
         this.cosmetics = cosmetics ? { ...defaultCosmetics(), ...cosmetics } : defaultCosmetics();
+        this.headCollider = { offsetY: -28, radius: 15 };
         
         this.respawnTimer = 0; // CTF Individual Timer
     }
@@ -1414,6 +1476,8 @@ class Character {
     update(terrain, projectiles, crates, game) {
         this.updateBuffs();
         this.animTimer += 0.1;
+        this.headCollider.offsetY = -28;
+        this.headCollider.radius = 15;
         
         // CTF Respawn
         if (this.dead && CONFIG.GAME_MODE === 'CTF') {
@@ -1704,15 +1768,15 @@ class Character {
 
         const headImg = getHeadImage(cosmetics.head);
         if (headImg && headImg.complete && headImg.naturalWidth > 0) {
-            const headSize = 26;
+            const headSize = 29;
             ctx.save();
             ctx.scale(-1, 1);
-            ctx.drawImage(headImg, -headSize / 2, -24, headSize, headSize);
+            ctx.drawImage(headImg, -headSize / 2, -28, headSize, headSize);
             ctx.restore();
         } else {
             ctx.fillStyle = '#f1c40f';
-            ctx.beginPath(); ctx.arc(0, -16, 9, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#000'; ctx.fillRect(1, -14, 5, 2);
+            ctx.beginPath(); ctx.arc(0, -18, 10, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#000'; ctx.fillRect(1, -16, 5, 2);
         }
 
         if (cosmetics.boots === 'combat') {
@@ -2045,6 +2109,7 @@ class Game {
         this.botCosmetics = new Map();
         this.botCosmeticsInitialized = false;
         this.blackHoles = [];
+        this.entityGrid = new SpatialGrid(CONFIG.SPATIAL_GRID_SIZE, CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT);
         
         this.particleSystem = new ParticleSystem();
         this.background = new BackgroundGenerator(CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT);
@@ -2345,6 +2410,11 @@ class Game {
         }
     }
 
+    getNearbyEntities(pos, radius) {
+        if (!this.entityGrid) return this.aliveEntities;
+        return this.entityGrid.queryRadius(pos, radius);
+    }
+
     shakeScreen(amount) { this.shake = amount; }
     flashScreen() { this.flash = 10; }
     
@@ -2416,6 +2486,10 @@ class Game {
             if (crate.isMedkit) this.medkits.push(crate);
             if (crate.crateType === 'weapon') this.weaponCrates.push(crate);
         }
+        this.entityGrid.clear();
+        for (let i = 0; i < this.aliveEntities.length; i++) {
+            this.entityGrid.insert(this.aliveEntities[i]);
+        }
         if (CONFIG.GAME_MODE === 'DM') {
             this.enemyCacheDm = this.aliveEntities;
         } else {
@@ -2482,6 +2556,9 @@ class Game {
         for (let i = this.projectiles.length - 1; i >= 0; i--) { 
             let p = this.projectiles[i]; p.update(this.terrain, this.particleSystem, this.aliveEntities, this); 
             if (!p.active) this.projectiles.splice(i, 1); 
+        }
+        if (this.tick % CONFIG.COLLISION_BATCH_TICKS === 0) {
+            this.terrain.flushCollisionUpdates();
         }
         this.fires = this.fires.filter(f => f.update(this));
         this.effects = this.effects.filter(f => f.update(this));
@@ -2713,6 +2790,10 @@ function populateCosmeticsSelects() {
     if (accessorySelect && accessorySelect.options.length === 0) {
         COSMETICS.accessories.forEach(opt => accessorySelect.add(new Option(opt.label, opt.id)));
     }
+    if (headSelect) headSelect.value = cosmetics.head || headSelect.value;
+    if (outfitSelect) outfitSelect.value = cosmetics.outfit || outfitSelect.value;
+    if (bootsSelect) bootsSelect.value = cosmetics.boots || bootsSelect.value;
+    if (accessorySelect) accessorySelect.value = cosmetics.accessory || accessorySelect.value;
 }
 
 function updateLobbyPreview() {
