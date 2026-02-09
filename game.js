@@ -1171,11 +1171,17 @@ class Projectile {
                 if (ent.id === this.ownerId && distSq(this.pos, ent.pos) < 20 * 20) continue; 
                 if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team) continue;
                 
-                // Check distance from entity center to the movement segment
+                // Check distance from entity center/head to the movement segment
                 let distToTrajectory = distToSegmentSquared(ent.pos, this.pos, nextPos);
                 let hitRadius = (this.type.type === 'laser' ? 10 : 15); // Increased laser hit radius
+                let headHit = false;
+                if (ent.headCollider) {
+                    const headPos = ent.pos.add(new Vector2(0, ent.headCollider.offsetY));
+                    const headRadius = ent.headCollider.radius || 0;
+                    headHit = distToSegmentSquared(headPos, this.pos, nextPos) < headRadius * headRadius;
+                }
                 
-                if (distToTrajectory < hitRadius * hitRadius) {
+                if (headHit || distToTrajectory < hitRadius * hitRadius) {
                      // Check if this hit is closer than previous hits
                      let d = distSq(this.pos, ent.pos);
                      if (d < closestDist) {
@@ -1597,17 +1603,21 @@ class Character {
         // Shooting
         if (this.input.shoot) {
             if (this.weapon.chargeable) {
-                this.isCharging = true;
-                if (this.charge < CONFIG.MAX_CHARGE) this.charge += CONFIG.CHARGE_RATE;
+                if (!this.cooldown || this.cooldown <= 0) {
+                    this.isCharging = true;
+                    if (this.charge < CONFIG.MAX_CHARGE) this.charge += CONFIG.CHARGE_RATE;
+                }
             } else if (!this.cooldown || this.cooldown <= 0) {
                 this.fire(game);
                 this.cooldown = this.weapon.cooldown;
             }
         } else {
             if (this.isCharging) {
-                this.fire(game);
+                if (!this.cooldown || this.cooldown <= 0) {
+                    this.fire(game);
+                    this.cooldown = this.weapon.cooldown || 20; 
+                }
                 this.charge = 0; this.isCharging = false;
-                this.cooldown = this.weapon.cooldown || 20; 
             }
         }
         if (this.cooldown > 0) this.cooldown--;
@@ -2349,7 +2359,7 @@ class Game {
                 iconWrap.style.color = w.color;
                 const iconImg = document.createElement('img');
                 iconImg.className = 'slot-icon-img';
-                iconImg.src = `Assets/Images/WeaponIcons/${w.type}.jpg`;
+                iconImg.src = `Assets/Images/WeaponIcons/${w.type}.png`;
                 iconImg.alt = w.name;
                 iconWrap.appendChild(iconImg);
                 div.appendChild(iconWrap);
