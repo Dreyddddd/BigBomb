@@ -176,8 +176,12 @@ body {
             justify-content: center;
             gap: 8px;
             pointer-events: auto;
-            margin-top: 22px;
-            margin-bottom: 10px;
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 6px;
+            margin-top: 0;
+            margin-bottom: 0;
             flex-wrap: wrap;
         }
 .inv-slot {
