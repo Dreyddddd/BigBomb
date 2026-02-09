@@ -133,39 +133,11 @@ const COSMETICS = {
         { id: '9', label: 'Тип 9' },
         { id: '10', label: 'Тип 10' },
         { id: '11', label: 'Тип 11' }
-    ],
-    outfits: [
-        { id: 'standard', label: 'Классика' },
-        { id: 'tactical', label: 'Тактик' },
-        { id: 'armor', label: 'Броня' },
-        { id: 'hoodie', label: 'Худи' },
-        { id: 'stealth', label: 'Стелс' },
-        { id: 'medic', label: 'Медик' },
-        { id: 'pilot', label: 'Пилот' },
-        { id: 'cyber', label: 'Кибер' },
-        { id: 'nomad', label: 'Кочевник' }
-    ],
-    boots: [
-        { id: 'standard', label: 'Обычные' },
-        { id: 'combat', label: 'Берцы' },
-        { id: 'sneakers', label: 'Кроссы' },
-        { id: 'runner', label: 'Раннер' },
-        { id: 'heavy', label: 'Тяжёлые' },
-        { id: 'armored', label: 'Бронеботы' }
-    ],
-    accessories: [
-        { id: 'none', label: 'Нет' },
-        { id: 'cape', label: 'Плащ' },
-        { id: 'backpack', label: 'Рюкзак' },
-        { id: 'scarf', label: 'Шарф' },
-        { id: 'jetpack', label: 'Джетпак' },
-        { id: 'satchel', label: 'Сумка' },
-        { id: 'medal', label: 'Медаль' },
-        { id: 'shieldgen', label: 'Генератор' },
-        { id: 'banner', label: 'Флаг' }
-    ],
-    palette: ['#3498db', '#e67e22', '#9b59b6', '#2ecc71', '#f1c40f', '#e74c3c', '#95a5a6']
+    ]
 };
+
+const DEFAULT_PLAYER_COLOR = '#3498db';
+const BOT_COLORS = ['#3498db', '#e67e22', '#9b59b6', '#2ecc71', '#f1c40f', '#e74c3c', '#95a5a6'];
 
 function randomChoice(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
@@ -187,23 +159,15 @@ function getHeadImage(headId) {
 
 function defaultCosmetics() {
     return {
-        head: '1',
-        outfit: 'standard',
-        boots: 'standard',
-        accessory: 'none',
-        accent: '#f1c40f'
+        head: '1'
     };
 }
 
 function randomBotCosmetics() {
     return {
-        color: randomChoice(COSMETICS.palette),
+        color: randomChoice(BOT_COLORS),
         cosmetics: {
-            head: randomChoice(COSMETICS.heads).id,
-            outfit: randomChoice(COSMETICS.outfits).id,
-            boots: randomChoice(COSMETICS.boots).id,
-            accessory: randomChoice(COSMETICS.accessories).id,
-            accent: randomChoice(COSMETICS.palette)
+            head: randomChoice(COSMETICS.heads).id
         }
     };
 }
@@ -481,12 +445,14 @@ class Fire {
             game.particleSystem.emit(this.pos.clone(), pVel, 20 + Math.random()*20, colors[Math.floor(Math.random()*colors.length)], 'fire');
         }
         if (this.life % 30 === 0) {
-            game.entities.forEach(e => {
+            const nearbyEntities = game.getNearbyEntities(this.pos, 20);
+            for (let i = 0; i < nearbyEntities.length; i++) {
+                const e = nearbyEntities[i];
                 if (!e.dead && e.pos.dist(this.pos) < 20) {
                     e.takeDamage(5, null, game); 
                     game.particleSystem.emit(e.pos.clone(), new Vector2(0,-1), 10, '#fff', 'spark');
                 }
-            });
+            }
         }
         return this.life > 0;
     }
@@ -508,7 +474,9 @@ class BlackHoleEffect {
     }
     update(game) {
         this.life--; this.angle += 0.2;
-        game.entities.forEach(e => {
+        const nearbyEntities = game.getNearbyEntities(this.pos, 400);
+        for (let i = 0; i < nearbyEntities.length; i++) {
+            const e = nearbyEntities[i];
             if (!e.dead) {
                 const distSquared = distSq(this.pos, e.pos);
                 if (distSquared < 400 * 400) {
@@ -518,7 +486,7 @@ class BlackHoleEffect {
                     e.vel = e.vel.add(pull);
                 }
             }
-        });
+        }
         game.crates.forEach(c => {
             if (distSq(this.pos, c.pos) < 400 * 400) {
                 c.pos = c.pos.add(this.pos.sub(c.pos).normalize().mult(5));
@@ -537,9 +505,11 @@ class BlackHoleEffect {
         if (this.life <= 1) {
             game.terrain.destroy(this.pos.x, this.pos.y, this.radius);
             game.shakeScreen(20); game.flashScreen();
-            game.entities.forEach(ent => { 
+            const blastEntities = game.getNearbyEntities(this.pos, this.radius);
+            for (let i = 0; i < blastEntities.length; i++) {
+                const ent = blastEntities[i];
                 if (this.pos.dist(ent.pos) < this.radius) ent.takeDamage(999, this.ownerId, game); 
-            });
+            }
         }
         return this.life > 0;
     }
@@ -1663,108 +1633,10 @@ class Character {
         ctx.translate(0, breathe);
         const cosmetics = this.cosmetics || defaultCosmetics();
 
-        if (cosmetics.accessory === 'cape') {
-            ctx.fillStyle = cosmetics.accent;
-            ctx.beginPath();
-            ctx.moveTo(-8, -8);
-            ctx.lineTo(-14, 14);
-            ctx.lineTo(0, 13);
-            ctx.lineTo(8, -8);
-            ctx.closePath();
-            ctx.fill();
-        } else if (cosmetics.accessory === 'backpack') {
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-10, -8, 6, 14);
-            ctx.fillStyle = '#222';
-            ctx.fillRect(-9, -4, 4, 7);
-        } else if (cosmetics.accessory === 'scarf') {
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-8, -9, 16, 3);
-            ctx.fillRect(4, -7, 3, 7);
-        } else if (cosmetics.accessory === 'jetpack') {
-            ctx.fillStyle = '#2c3e50';
-            ctx.fillRect(-12, -8, 5, 14);
-            ctx.fillRect(7, -8, 5, 14);
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-10, 4, 3, 4);
-            ctx.fillRect(9, 4, 3, 4);
-        } else if (cosmetics.accessory === 'satchel') {
-            ctx.fillStyle = '#8e6e53';
-            ctx.fillRect(-11, 1, 7, 7);
-            ctx.strokeStyle = '#5d4037';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(-8, -6);
-            ctx.lineTo(-4, 3);
-            ctx.stroke();
-        } else if (cosmetics.accessory === 'medal') {
-            ctx.fillStyle = '#f1c40f';
-            ctx.beginPath(); ctx.arc(0, -4, 3, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = '#c0392b';
-            ctx.fillRect(-1, -10, 2, 5);
-        } else if (cosmetics.accessory === 'shieldgen') {
-            ctx.fillStyle = '#16a085';
-            ctx.fillRect(-12, -6, 6, 10);
-            ctx.fillStyle = '#0f5c4e';
-            ctx.fillRect(-11, -2, 4, 4);
-        } else if (cosmetics.accessory === 'banner') {
-            ctx.strokeStyle = cosmetics.accent;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(8, -10);
-            ctx.lineTo(8, 10);
-            ctx.stroke();
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(8, -10, 8, 6);
-        }
-
         ctx.fillStyle = this.color;
         ctx.beginPath(); ctx.roundRect(-8, -10, 16, 20, 6); ctx.fill();
         ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(-6, -8, 12, 14);
         ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(-7, -9, 5, 7);
-
-        if (cosmetics.outfit === 'tactical') {
-            ctx.fillStyle = '#2c3e50';
-            ctx.fillRect(-8, -7, 16, 7);
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-2, -6, 4, 6);
-        } else if (cosmetics.outfit === 'armor') {
-            ctx.fillStyle = '#7f8c8d';
-            ctx.fillRect(-8, -10, 16, 10);
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-8, -2, 16, 3);
-        } else if (cosmetics.outfit === 'hoodie') {
-            ctx.fillStyle = '#2d3436';
-            ctx.fillRect(-8, -10, 16, 6);
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-5, -4, 10, 2);
-        } else if (cosmetics.outfit === 'stealth') {
-            ctx.fillStyle = '#1c1c1c';
-            ctx.fillRect(-8, -10, 16, 7);
-            ctx.fillStyle = '#555';
-            ctx.fillRect(-8, -3, 16, 2);
-        } else if (cosmetics.outfit === 'medic') {
-            ctx.fillStyle = '#ecf0f1';
-            ctx.fillRect(-8, -10, 16, 7);
-            ctx.fillStyle = '#e74c3c';
-            ctx.fillRect(-1, -8, 2, 7);
-            ctx.fillRect(-5, -5, 10, 2);
-        } else if (cosmetics.outfit === 'pilot') {
-            ctx.fillStyle = '#8e6e53';
-            ctx.fillRect(-8, -10, 16, 7);
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-8, -4, 16, 2);
-        } else if (cosmetics.outfit === 'cyber') {
-            ctx.fillStyle = '#34495e';
-            ctx.fillRect(-8, -10, 16, 7);
-            ctx.fillStyle = '#00ffcc';
-            ctx.fillRect(-8, -6, 16, 2);
-        } else if (cosmetics.outfit === 'nomad') {
-            ctx.fillStyle = '#6d4c41';
-            ctx.fillRect(-8, -10, 16, 7);
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-6, -3, 12, 2);
-        }
 
         const headImg = getHeadImage(cosmetics.head);
         if (headImg && headImg.complete && headImg.naturalWidth > 0) {
@@ -1779,34 +1651,6 @@ class Character {
             ctx.fillStyle = '#000'; ctx.fillRect(1, -16, 5, 2);
         }
 
-        if (cosmetics.boots === 'combat') {
-            ctx.fillStyle = '#111';
-            ctx.fillRect(-8 + walkCycle, 14, 7, 3);
-            ctx.fillRect(1 - walkCycle, 14, 7, 3);
-        } else if (cosmetics.boots === 'sneakers') {
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-7 + walkCycle, 14, 6, 2);
-            ctx.fillRect(1 - walkCycle, 14, 6, 2);
-        } else if (cosmetics.boots === 'runner') {
-            ctx.fillStyle = '#ecf0f1';
-            ctx.fillRect(-7 + walkCycle, 14, 6, 2);
-            ctx.fillRect(1 - walkCycle, 14, 6, 2);
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-6 + walkCycle, 15, 4, 1);
-            ctx.fillRect(2 - walkCycle, 15, 4, 1);
-        } else if (cosmetics.boots === 'heavy') {
-            ctx.fillStyle = '#2c3e50';
-            ctx.fillRect(-8 + walkCycle, 13, 7, 4);
-            ctx.fillRect(1 - walkCycle, 13, 7, 4);
-        } else if (cosmetics.boots === 'armored') {
-            ctx.fillStyle = '#7f8c8d';
-            ctx.fillRect(-8 + walkCycle, 13, 7, 4);
-            ctx.fillRect(1 - walkCycle, 13, 7, 4);
-            ctx.fillStyle = cosmetics.accent;
-            ctx.fillRect(-7 + walkCycle, 14, 5, 2);
-            ctx.fillRect(2 - walkCycle, 14, 5, 2);
-        }
-        
         let aimX = this.input.aimTarget.x - this.pos.x;
         let aimY = this.input.aimTarget.y - this.pos.y;
         this.facingRight = aimX >= 0;
@@ -2232,7 +2076,7 @@ class Game {
 
         if (CONFIG.GAME_MODE === 'DM') { startX = CONFIG.WORLD_WIDTH / 2; startY = 200; }
         
-        const playerColor = getPlayerColorFromUI();
+        const playerColor = CONFIG.GAME_MODE === 'DM' ? DEFAULT_PLAYER_COLOR : TEAMS[pTeam].color;
         this.playerCosmetics = getPlayerCosmeticsFromUI(this.playerCosmetics);
         this.player = new Character(startX, startY, 0, playerColor, pName, pTeam, this.playerCosmetics);
         this.entities.push(this.player);
@@ -2251,7 +2095,8 @@ class Game {
                 this.botCosmetics.set(botId, randomBotCosmetics());
             }
             const botVisual = this.botCosmetics.get(botId);
-            this.entities.push(new Bot(bx, by, botId, name, team, botVisual.color, botVisual.cosmetics));
+            const botColor = team === 0 ? botVisual.color : TEAMS[team].color;
+            this.entities.push(new Bot(bx, by, botId, name, team, botColor, botVisual.cosmetics));
         }
         this.botCosmeticsInitialized = true;
         
@@ -2698,20 +2543,9 @@ function openLobby(fromScreen) {
     document.getElementById('frag-limit-val').innerText = CONFIG.WIN_LIMIT;
     const cosmetics = gameInstance?.playerCosmetics || defaultCosmetics();
     const headSelect = document.getElementById('player-head-select');
-    const outfitSelect = document.getElementById('player-outfit-select');
-    const bootsSelect = document.getElementById('player-boots-select');
-    const accessorySelect = document.getElementById('player-accessory-select');
-    const accentInput = document.getElementById('player-accent-input');
-    const colorInputSettings = document.getElementById('player-color-input-settings');
-    const colorInputStart = document.getElementById('player-color-input');
     const lobbyName = document.getElementById('lobby-nickname-input');
     if (lobbyName) lobbyName.value = document.getElementById('nickname-input')?.value || '';
     if (headSelect) headSelect.value = cosmetics.head;
-    if (outfitSelect) outfitSelect.value = cosmetics.outfit;
-    if (bootsSelect) bootsSelect.value = cosmetics.boots;
-    if (accessorySelect) accessorySelect.value = cosmetics.accessory;
-    if (accentInput) accentInput.value = cosmetics.accent;
-    if (colorInputSettings) colorInputSettings.value = colorInputStart?.value || '#3498db';
     populateCosmeticsSelects();
     updateLobbyPreview();
 }
@@ -2729,11 +2563,6 @@ function updateLobbyUI() {
 function closeLobby() {
     if (gameInstance) {
         gameInstance.playerCosmetics = getPlayerCosmeticsFromUI(gameInstance.playerCosmetics);
-        const colorInputSettings = document.getElementById('player-color-input-settings');
-        const colorInputStart = document.getElementById('player-color-input');
-        if (colorInputSettings && colorInputStart) {
-            colorInputStart.value = colorInputSettings.value;
-        }
     }
     document.getElementById('lobby-screen').style.display = 'none';
     if (previousScreen === 'MENU') {
@@ -2746,22 +2575,8 @@ function closeLobby() {
 function getPlayerCosmeticsFromUI(current) {
     const cosmetics = { ...defaultCosmetics(), ...(current || {}) };
     const headSelect = document.getElementById('player-head-select');
-    const outfitSelect = document.getElementById('player-outfit-select');
-    const bootsSelect = document.getElementById('player-boots-select');
-    const accessorySelect = document.getElementById('player-accessory-select');
-    const accentInput = document.getElementById('player-accent-input');
     if (headSelect) cosmetics.head = headSelect.value;
-    if (outfitSelect) cosmetics.outfit = outfitSelect.value;
-    if (bootsSelect) cosmetics.boots = bootsSelect.value;
-    if (accessorySelect) cosmetics.accessory = accessorySelect.value;
-    if (accentInput) cosmetics.accent = accentInput.value;
     return cosmetics;
-}
-
-function getPlayerColorFromUI() {
-    const settingsInput = document.getElementById('player-color-input-settings');
-    const startInput = document.getElementById('player-color-input');
-    return settingsInput?.value || startInput?.value || '#3498db';
 }
 
 function startGameFromLobby() {
@@ -2774,26 +2589,12 @@ function startGameFromLobby() {
 
 function populateCosmeticsSelects() {
     const headSelect = document.getElementById('player-head-select');
-    const outfitSelect = document.getElementById('player-outfit-select');
-    const bootsSelect = document.getElementById('player-boots-select');
-    const accessorySelect = document.getElementById('player-accessory-select');
+    const cosmetics = getPlayerCosmeticsFromUI(gameInstance?.playerCosmetics);
     if (headSelect && headSelect.options.length === 0) {
         COSMETICS.heads.forEach(opt => headSelect.add(new Option(opt.label, opt.id)));
         headSelect.value = cosmetics.head;
     }
-    if (outfitSelect && outfitSelect.options.length === 0) {
-        COSMETICS.outfits.forEach(opt => outfitSelect.add(new Option(opt.label, opt.id)));
-    }
-    if (bootsSelect && bootsSelect.options.length === 0) {
-        COSMETICS.boots.forEach(opt => bootsSelect.add(new Option(opt.label, opt.id)));
-    }
-    if (accessorySelect && accessorySelect.options.length === 0) {
-        COSMETICS.accessories.forEach(opt => accessorySelect.add(new Option(opt.label, opt.id)));
-    }
     if (headSelect) headSelect.value = cosmetics.head || headSelect.value;
-    if (outfitSelect) outfitSelect.value = cosmetics.outfit || outfitSelect.value;
-    if (bootsSelect) bootsSelect.value = cosmetics.boots || bootsSelect.value;
-    if (accessorySelect) accessorySelect.value = cosmetics.accessory || accessorySelect.value;
 }
 
 function updateLobbyPreview() {
@@ -2801,7 +2602,7 @@ function updateLobbyPreview() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const color = getPlayerColorFromUI();
+    const color = DEFAULT_PLAYER_COLOR;
     const cosmetics = getPlayerCosmeticsFromUI(gameInstance?.playerCosmetics);
     const preview = new Character(canvas.width / 2, canvas.height / 2 + 20, -1, color, 'PREVIEW', 0, cosmetics);
     preview.input.aimTarget = new Vector2(preview.pos.x + 30, preview.pos.y - 10);

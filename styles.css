@@ -176,6 +176,7 @@ body {
             justify-content: center;
             gap: 8px;
             pointer-events: auto;
+            margin-top: 22px;
             margin-bottom: 10px;
             flex-wrap: wrap;
         }
@@ -232,7 +233,7 @@ body {
     word-wrap: break-word;
     text-shadow: 1px 1px 0px #000;
     color: #f2f2f2;
-    margin-top: -2px;
+    margin-top: -8px;
 }
 
 .slot-icon {
