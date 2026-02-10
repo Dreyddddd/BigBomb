@@ -225,6 +225,59 @@ const WeaponType = {
     NUKE:       { name: "Ядерка", color: '#2c3e50', radius: 250, damage: 100, type: 'nuke', cooldown: 280, chargeable: true }
 };
 
+const PERK_LIST = [
+    { id: 'tenacity', name: 'Упорство', desc: '+10% к максимальному HP' },
+    { id: 'field_armor', name: 'Полевая броня', desc: 'Входящий взрывной урон -8%' },
+    { id: 'dash', name: 'Рывок', desc: 'Скорость передвижения +6%' },
+    { id: 'high_jump', name: 'Высокий прыжок', desc: 'Сила прыжка +10%' },
+    { id: 'steady_hand', name: 'Твёрдая рука', desc: 'Разброс дробовика -10%' },
+    { id: 'combat_instinct', name: 'Боевой инстинкт', desc: 'При HP < 35% урон +8%' },
+    { id: 'pyrokinesis', name: 'Пирокинез', desc: '50% шанс поджечь поверхность любым оружием' },
+    { id: 'fire_resist', name: 'Огнестойкость', desc: 'Урон от огня/молотова -15%' },
+    { id: 'kill_impulse', name: 'Импульс при убийстве', desc: 'После фрага 2 сек. скорость +10%' },
+    { id: 'berserk', name: 'Берсерк', desc: 'После фрага 2 сек. урон +10%' },
+    { id: 'loot_scout', name: 'Разведчик лута', desc: 'Подбор ящиков +25% радиуса' },
+    { id: 'sapper', name: 'Сапёр', desc: 'Урон по себе от своих взрывов -12%' },
+    { id: 'close_damage', name: 'Убойный центр', desc: '+10% урона если цель ближе 120px' },
+    { id: 'far_focus', name: 'Дальний фокус', desc: '+8% урона если цель дальше 450px' },
+    { id: 'plasma_split', name: 'Дестабилизатор плазмы', desc: 'PLASMA делится на 2 при столкновении' },
+    { id: 'tank', name: 'Танк', desc: 'Любой входящий урон -20%, скорость -10%' },
+    { id: 'shrapnel', name: 'Шрапнель', desc: 'GRENADE сильнее отталкивает врага' },
+    { id: 'fire_trail', name: 'Огненный след', desc: 'MOLOTOV создаёт +1..2 огненных капли' },
+    { id: 'anti_grav', name: 'Антиграв-зацеп', desc: 'Сила притяжения чёрной дыры по вам -12%' },
+    { id: 'pierce', name: 'Пробой', desc: 'SNIPER/LASER пробивают первую цель' },
+    { id: 'bazooka_radius', name: 'Усиленный снаряд', desc: 'Радиус взрыва BAZOOKA +10%' },
+    { id: 'regen_window', name: 'Реген-окно', desc: 'Через 6 сек без урона: +1 HP/сек до +50' },
+    { id: 'back_strike', name: 'Тыловой удар', desc: '+10% урона по стоящей цели' },
+    { id: 'spec_training', name: 'Спецподготовка', desc: 'Длительность powerup +12%' },
+    { id: 'predator', name: 'Хищник', desc: 'После убийства +5 HP' },
+    { id: 'quick_response', name: 'Скорый отклик', desc: 'После смены оружия быстрее готов к выстрелу' },
+    { id: 'frag_shield', name: 'Фраг-щит', desc: 'После фрага 1.2 сек -20% входящего урона' },
+    { id: 'ctf_courier', name: 'CTF: Курьер', desc: 'При переносе флага +8% скорость, -5% урон', mode: 'CTF' },
+    { id: 'ctf_anchor', name: 'CTF: Опорник', desc: 'Рядом со своим флагом -10% входящего урона', mode: 'CTF' },
+    { id: 'support', name: 'Поддержка', desc: 'В TDM/CTF рядом с союзником -5% входящего урона', mode: 'TEAM' }
+];
+
+function getAvailablePerksForMode(mode, ownedSet) {
+    return PERK_LIST.filter((perk) => {
+        if (ownedSet && ownedSet.has(perk.id)) return false;
+        if (perk.mode === 'CTF' && mode !== 'CTF') return false;
+        if (perk.mode === 'TEAM' && mode === 'DM') return false;
+        return true;
+    });
+}
+
+function pickRandomPerks(mode, owned, count = 3) {
+    const pool = getAvailablePerksForMode(mode, new Set(owned || []));
+    for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = pool[i];
+        pool[i] = pool[j];
+        pool[j] = t;
+    }
+    return pool.slice(0, count);
+}
+
 const Materials = {
     DIRT:   { color: [101, 78, 56],   hardness: 0.0 }, 
     STONE:  { color: [100, 100, 100], hardness: 0.6 }, 
@@ -475,7 +528,7 @@ class Fire {
             for (let i = 0; i < nearbyEntities.length; i++) {
                 const e = nearbyEntities[i];
                 if (!e.dead && e.pos.dist(this.pos) < 20) {
-                    e.takeDamage(5, null, game); 
+                    e.takeDamage(5, null, game, 'fire'); 
                     game.particleSystem.emit(e.pos.clone(), new Vector2(0,-1), 10, '#fff', 'spark');
                 }
             }
@@ -534,7 +587,7 @@ class BlackHoleEffect {
             const blastEntities = game.getNearbyEntities(this.pos, this.radius);
             for (let i = 0; i < blastEntities.length; i++) {
                 const ent = blastEntities[i];
-                if (this.pos.dist(ent.pos) < this.radius) ent.takeDamage(999, this.ownerId, game); 
+                if (this.pos.dist(ent.pos) < this.radius) ent.takeDamage(999, this.ownerId, game, 'blackhole'); 
             }
         }
         return this.life > 0;
@@ -1257,6 +1310,8 @@ class Projectile {
 
         if (this.type.type === 'molotov' || (this.type.burn && this.type.burn > 0)) {
              let fireCount = this.type.burn || 10;
+             const owner = game.entities.find(e => e.id === this.ownerId);
+             if (owner && owner.perkModifiers) fireCount += owner.perkModifiers.fireTrailBonus;
              for(let i=0; i<fireCount; i++) {
                  let v = new Vector2((Math.random()-0.5)*8, -2 - Math.random()*5);
                  let p = new Projectile(this.pos.clone().add(new Vector2(0,-5)), v, {type: 'fire_droplet', color: '#e67e22'}, this.ownerId);
@@ -1275,11 +1330,27 @@ class Projectile {
             }
         }
 
-        if (this.type.type !== 'laser') terrain.destroy(this.pos.x, this.pos.y, this.type.radius, this.type.type);
+        const owner = game.entities.find(e => e.id === this.ownerId) || null;
+        let effectiveRadius = this.type.radius;
+        if (owner && owner.perkModifiers) {
+            if (this.type.type === 'explosive') effectiveRadius *= owner.perkModifiers.bazookaRadius;
+            if (this.type.type === 'energy' && owner.perkModifiers.plasmaSplit && !this.didSplit) {
+                this.didSplit = true;
+                for (let i = 0; i < 2; i++) {
+                    const spread = (i === 0 ? -0.22 : 0.22);
+                    const rotated = new Vector2(this.vel.x * Math.cos(spread) - this.vel.y * Math.sin(spread), this.vel.x * Math.sin(spread) + this.vel.y * Math.cos(spread));
+                    const splitType = { ...this.type };
+                    const p = new Projectile(this.pos.clone(), rotated.mult(0.85), splitType, this.ownerId, this.team);
+                    p.didSplit = true;
+                    game.projectiles.push(p);
+                }
+            }
+        }
+        if (this.type.type !== 'laser') terrain.destroy(this.pos.x, this.pos.y, effectiveRadius, this.type.type);
         
-        const dmgRadius = this.type.radius + 20;
+        const dmgRadius = effectiveRadius + 20;
         const dmgRadiusSq = dmgRadius * dmgRadius;
-        let attacker = game.entities.find(e => e.id === this.ownerId) || null;
+        let attacker = owner;
         const candidates = game.getNearbyEntities(this.pos, dmgRadius);
         for (let i = 0; i < candidates.length; i++) {
             const ent = candidates[i];
@@ -1289,13 +1360,28 @@ class Projectile {
             if (dSq < dmgRadiusSq) {
                 const d = Math.sqrt(dSq);
                 let damage = this.type.damage * (1 - d / dmgRadius);
-                if (attacker && attacker.damageMultiplier) damage *= attacker.damageMultiplier;
+                if (attacker) {
+                    if (attacker.damageMultiplier) damage *= attacker.damageMultiplier;
+                    if (attacker.getOutgoingDamageMultiplier) damage *= attacker.getOutgoingDamageMultiplier(ent, game);
+                }
 
                 if(this.type.type === 'laser') damage = this.type.damage; 
-                ent.takeDamage(damage < 0 ? 0 : damage, this.ownerId, game);
+                const sourceType = this.type.type === 'molotov' ? 'fire' : this.type.type;
+                let finalDamage = damage < 0 ? 0 : damage;
+                if (attacker && ent.id === attacker.id && (sourceType === 'explosive' || sourceType === 'nuke' || sourceType === 'bounce' || sourceType === 'energy')) {
+                    finalDamage *= attacker.perkModifiers.selfExplosiveTaken;
+                }
+                ent.takeDamage(finalDamage, this.ownerId, game, sourceType);
                 let pushDir = ent.pos.sub(this.pos).normalize();
-                ent.vel = ent.vel.add(pushDir.mult(4)); 
+                let pushPower = 4;
+                if (attacker && attacker.perkModifiers && this.type.type === 'bounce') pushPower *= attacker.perkModifiers.grenadePush;
+                ent.vel = ent.vel.add(pushDir.mult(pushPower)); 
             }
+        }
+
+        if (attacker && attacker.perkModifiers && attacker.perkModifiers.pyrokinesis && Math.random() < 0.5 && this.type.type !== 'fire_droplet') {
+            terrain.drawStain(this.pos.x, this.pos.y, 22, 'rgba(230,126,34,0.55)');
+            game.fires.push(new Fire(this.pos.clone(), 140));
         }
 
         let count = 10; let color = this.type.color; let type = 'normal';
@@ -1439,13 +1525,140 @@ class Character {
         this.buffs = [];
         this.jumpMultiplier = 1; this.speedMultiplier = 1; this.damageMultiplier = 1; this.isShielded = false;
         this.cosmetics = cosmetics ? { ...defaultCosmetics(), ...cosmetics } : defaultCosmetics();
+        this.perks = [];
+        this.perkNextKillThreshold = 4;
+        this.perkThresholdStep = 2;
+        this.perkChoiceOptions = [];
+        this.perkPendingChoice = false;
+        this.killImpulseTimer = 0;
+        this.berserkTimer = 0;
+        this.fragShieldTimer = 0;
+        this.regenIdleTimer = 0;
+        this.regenPool = 0;
+        this.lastWeaponSwitchTick = -9999;
+        this.perkModifiers = {
+            maxHp: 1,
+            explosiveTaken: 1,
+            speed: 1,
+            jump: 1,
+            shotgunSpread: 1,
+            lowHpDamage: 1,
+            fireTaken: 1,
+            selfExplosiveTaken: 1,
+            closeDamage: 1,
+            farDamage: 1,
+            blackholePull: 1,
+            bazookaRadius: 1,
+            powerupDuration: 1,
+            supportTaken: 1,
+            courierDamage: 1,
+            grenadePush: 1,
+            fireTrailBonus: 0,
+            pyrokinesis: false,
+            plasmaSplit: false,
+            pierce: false,
+            quickResponse: false
+        };
         
         this.respawnTimer = 0; // CTF Individual Timer
     }
 
     applyBuff(buff) {
         this.buffs = this.buffs.filter(b => b.type !== buff.type);
-        this.buffs.push({ ...buff, timeLeft: buff.duration });
+        this.buffs.push({ ...buff, timeLeft: Math.floor(buff.duration * this.perkModifiers.powerupDuration) });
+    }
+
+    hasPerk(id) { return this.perks.includes(id); }
+
+    getMaxHp() { return 100 * this.perkModifiers.maxHp; }
+
+    addPerk(id) {
+        if (!id || this.hasPerk(id)) return false;
+        this.perks.push(id);
+        this.rebuildPerkModifiers();
+        return true;
+    }
+
+    rebuildPerkModifiers() {
+        const m = {
+            maxHp: 1, explosiveTaken: 1, speed: 1, jump: 1, shotgunSpread: 1,
+            lowHpDamage: 1, fireTaken: 1, selfExplosiveTaken: 1, closeDamage: 1,
+            farDamage: 1, blackholePull: 1, bazookaRadius: 1, powerupDuration: 1,
+            supportTaken: 1, courierDamage: 1, grenadePush: 1, fireTrailBonus: 0,
+            pyrokinesis: false, plasmaSplit: false, pierce: false, quickResponse: false
+        };
+        for (let i = 0; i < this.perks.length; i++) {
+            const id = this.perks[i];
+            if (id === 'tenacity') m.maxHp *= 1.1;
+            else if (id === 'field_armor') m.explosiveTaken *= 0.92;
+            else if (id === 'dash') m.speed *= 1.06;
+            else if (id === 'high_jump') m.jump *= 1.1;
+            else if (id === 'steady_hand') m.shotgunSpread *= 0.9;
+            else if (id === 'combat_instinct') m.lowHpDamage *= 1.08;
+            else if (id === 'pyrokinesis') m.pyrokinesis = true;
+            else if (id === 'fire_resist') m.fireTaken *= 0.85;
+            else if (id === 'sapper') m.selfExplosiveTaken *= 0.88;
+            else if (id === 'close_damage') m.closeDamage *= 1.1;
+            else if (id === 'far_focus') m.farDamage *= 1.08;
+            else if (id === 'plasma_split') m.plasmaSplit = true;
+            else if (id === 'tank') { m.explosiveTaken *= 0.8; m.fireTaken *= 0.8; m.speed *= 0.9; }
+            else if (id === 'shrapnel') m.grenadePush *= 1.2;
+            else if (id === 'fire_trail') m.fireTrailBonus += 2;
+            else if (id === 'anti_grav') m.blackholePull *= 0.88;
+            else if (id === 'pierce') m.pierce = true;
+            else if (id === 'bazooka_radius') m.bazookaRadius *= 1.1;
+            else if (id === 'spec_training') m.powerupDuration *= 1.12;
+            else if (id === 'quick_response') m.quickResponse = true;
+            else if (id === 'ctf_courier') m.courierDamage *= 0.95;
+            else if (id === 'support') m.supportTaken *= 0.95;
+        }
+        this.perkModifiers = m;
+        this.hp = Math.min(this.hp, this.getMaxHp());
+    }
+
+    hasNearbyAlly(game, radius) {
+        if (CONFIG.GAME_MODE === 'DM' || this.team === 0) return false;
+        const nearby = game.getNearbyEntities(this.pos, radius);
+        for (let i = 0; i < nearby.length; i++) {
+            const e = nearby[i];
+            if (e !== this && !e.dead && e.team === this.team) return true;
+        }
+        return false;
+    }
+
+    isNearOwnFlag(game, radius) {
+        if (CONFIG.GAME_MODE !== 'CTF' || this.team === 0) return false;
+        for (let i = 0; i < game.flags.length; i++) {
+            const f = game.flags[i];
+            if (f.teamId === this.team && distSq(this.pos, f.pos) <= radius * radius) return true;
+        }
+        return false;
+    }
+
+    getOutgoingDamageMultiplier(target, game) {
+        let mult = 1;
+        if (this.hp < this.getMaxHp() * 0.35) mult *= this.perkModifiers.lowHpDamage;
+        if (this.berserkTimer > 0) mult *= 1.1;
+        if (target) {
+            const dSq = distSq(this.pos, target.pos);
+            if (dSq < 120 * 120) mult *= this.perkModifiers.closeDamage;
+            if (dSq > 450 * 450) mult *= this.perkModifiers.farDamage;
+            if (this.hasPerk('back_strike') && Math.abs(target.vel.x) < 0.08 && Math.abs(target.vel.y) < 0.08) mult *= 1.1;
+        }
+        if (CONFIG.GAME_MODE === 'CTF' && this.hasPerk('ctf_courier')) {
+            for (let i = 0; i < game.flags.length; i++) {
+                if (game.flags[i].carrier === this) { mult *= this.perkModifiers.courierDamage; break; }
+            }
+        }
+        return mult;
+    }
+
+    onKill(game) {
+        if (this.hasPerk('kill_impulse')) this.killImpulseTimer = 120;
+        if (this.hasPerk('berserk')) this.berserkTimer = 120;
+        if (this.hasPerk('frag_shield')) this.fragShieldTimer = 72;
+        if (this.hasPerk('predator')) this.hp = Math.min(this.getMaxHp(), this.hp + 5);
+        if (game) game.tryOfferPerk(this);
     }
 
     updateBuffs() {
@@ -1461,9 +1674,15 @@ class Character {
         }
     }
 
-    takeDamage(amount, attackerId, game) {
+    takeDamage(amount, attackerId, game, sourceType = null) {
         if (this.isShielded || this.dead) return; 
+        if (sourceType === 'explosive' || sourceType === 'nuke' || sourceType === 'bounce' || sourceType === 'energy') amount *= this.perkModifiers.explosiveTaken;
+        if (sourceType === 'fire') amount *= this.perkModifiers.fireTaken;
+        if (this.fragShieldTimer > 0) amount *= 0.8;
+        if (this.hasPerk('support') && this.hasNearbyAlly(game, 170)) amount *= this.perkModifiers.supportTaken;
+        if (this.hasPerk('ctf_anchor') && this.isNearOwnFlag(game, 220)) amount *= 0.9;
         this.hp -= amount;
+        this.regenIdleTimer = 0;
         if (this.hp <= 0 && !this.dead) {
             this.hp = 0; this.dead = true; this.deaths++; this.vel.y = -5;
             
@@ -1477,6 +1696,7 @@ class Character {
                 let killer = game.entities.find(e => e.id === attackerId);
                 if (killer) {
                     killer.kills++;
+                    killer.onKill(game);
                     // TDM Score logic moved to Round End
                 }
             } 
@@ -1493,6 +1713,7 @@ class Character {
         if (slotIndex >= 0 && slotIndex < this.inventory.length) {
             this.weapon = this.inventory[slotIndex];
             this.weaponIndex = slotIndex;
+            this.lastWeaponSwitchTick = gameInstance ? gameInstance.tick : this.lastWeaponSwitchTick;
             return true;
         }
         return false;
@@ -1501,6 +1722,9 @@ class Character {
     update(terrain, projectiles, crates, game) {
         this.updateBuffs();
         this.animTimer += 0.1;
+        if (this.killImpulseTimer > 0) this.killImpulseTimer--;
+        if (this.berserkTimer > 0) this.berserkTimer--;
+        if (this.fragShieldTimer > 0) this.fragShieldTimer--;
         
         // CTF Respawn
         if (this.dead && CONFIG.GAME_MODE === 'CTF') {
@@ -1520,14 +1744,14 @@ class Character {
 
         game.effects.forEach(e => {
             if(e instanceof BlackHoleEffect && this.pos.dist(e.pos) < 400) {
-                let pull = e.pos.sub(this.pos).normalize().mult((200/(this.pos.dist(e.pos)+10))*0.05);
+                let pull = e.pos.sub(this.pos).normalize().mult((200/(this.pos.dist(e.pos)+10))*0.05 * this.perkModifiers.blackholePull);
                 this.vel = this.vel.add(pull);
             }
         });
 
         crates.forEach(c => {
             if (c.active && this.pos.dist(c.pos) < 25) {
-                if (c.isMedkit) this.hp = Math.min(100, this.hp + 40);
+                if (c.isMedkit) this.hp = Math.min(this.getMaxHp(), this.hp + 40 * (this.hasPerk('tenacity') ? 1.15 : 1));
                 else if (c.crateType === 'powerup') this.applyBuff(c.content);
                 else if (c.content) { 
                         if (!this.inventory.find(w => w.name === c.content.name)) {
@@ -1546,7 +1770,13 @@ class Character {
         });
 
         let targetSpeed = 0;
-        let maxSpeed = CONFIG.MAX_SPEED * this.speedMultiplier;
+        let maxSpeed = CONFIG.MAX_SPEED * this.speedMultiplier * this.perkModifiers.speed;
+        if (this.killImpulseTimer > 0) maxSpeed *= 1.1;
+        if (this.hasPerk('ctf_courier') && CONFIG.GAME_MODE === 'CTF') {
+            for (let i = 0; i < game.flags.length; i++) {
+                if (game.flags[i].carrier === this) { maxSpeed *= 1.08; break; }
+            }
+        }
         if (this.input.left) { targetSpeed = -maxSpeed; }
         if (this.input.right) { targetSpeed = maxSpeed; }
         this.facingRight = (this.input.aimTarget.x - this.pos.x) >= 0;
@@ -1554,7 +1784,7 @@ class Character {
         this.vel.x += (targetSpeed - this.vel.x) * accel;
         if (Math.abs(this.vel.x) < 0.05) this.vel.x = 0;
         if (this.input.jump && this.grounded) {
-            this.vel.y = -CONFIG.JUMP_FORCE * this.jumpMultiplier; this.grounded = false; this.pos.y -= 2;
+            this.vel.y = -CONFIG.JUMP_FORCE * this.jumpMultiplier * this.perkModifiers.jump; this.grounded = false; this.pos.y -= 2;
         }
         this.vel.y += CONFIG.GRAVITY;
 
@@ -1612,6 +1842,11 @@ class Character {
             }
         }
         if (this.cooldown > 0) this.cooldown--;
+        this.regenIdleTimer++;
+        if (this.hasPerk('regen_window') && this.regenIdleTimer > 360 && this.regenPool < 50 && this.hp < this.getMaxHp() && game.tick % 60 === 0) {
+            this.hp = Math.min(this.getMaxHp(), this.hp + 1);
+            this.regenPool++;
+        }
     }
 
     fire(game) {
@@ -1621,7 +1856,7 @@ class Character {
 
         if (this.weapon.type === 'shotgun') {
             for(let i=0; i<5; i++) {
-                let spread = new Vector2(dir.y, -dir.x).mult((Math.random()-0.5)*0.5);
+                let spread = new Vector2(dir.y, -dir.x).mult((Math.random()-0.5)*0.5 * this.perkModifiers.shotgunSpread);
                 let p = new Projectile(this.pos.clone(), dir.add(spread).normalize().mult(power), this.weapon, this.id, this.team);
                 game.projectiles.push(p);
             }
@@ -2024,6 +2259,7 @@ class Game {
         this.botCosmetics = new Map();
         this.botCosmeticsInitialized = false;
         this.blackHoles = [];
+        this.selectedPerkId = null;
         this.entityGrid = new SpatialGrid(CONFIG.SPATIAL_GRID_SIZE, CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT);
         
         this.particleSystem = new ParticleSystem();
@@ -2067,6 +2303,10 @@ class Game {
         });
 
         window.addEventListener('resize', () => this.resize());
+        const perkConfirmBtn = document.getElementById('perk-confirm');
+        if (perkConfirmBtn) {
+            perkConfirmBtn.addEventListener('click', () => this.applySelectedPerk());
+        }
         this.resize();
 
         requestAnimationFrame((t) => this.loop(t));
@@ -2177,6 +2417,7 @@ class Game {
         this.paused = false;
         document.getElementById('start-screen').style.display = 'none'; 
         document.getElementById('ui-layer').style.display = 'flex';
+        document.getElementById('perk-choice').style.display = 'none';
         document.getElementById('frag-goal-display').innerText = CONFIG.WIN_LIMIT;
         document.getElementById('team-hud').style.display = CONFIG.GAME_MODE === 'DM' ? 'none' : 'flex';
         
@@ -2266,7 +2507,7 @@ class Game {
 
     respawnEntity(ent) {
         ent.dead = false;
-        ent.hp = 100;
+        ent.hp = ent.getMaxHp();
         ent.vel = new Vector2(0,0);
         ent.inventory = [{...WeaponType.PISTOL}];
         ent.weaponIndex = 0;
@@ -2363,6 +2604,64 @@ class Game {
             container.appendChild(div);
         }
     }
+
+    tryOfferPerk(ent) {
+        if (!ent || ent.dead || ent.perkPendingChoice) return;
+        if (ent.kills < ent.perkNextKillThreshold) return;
+        const options = pickRandomPerks(CONFIG.GAME_MODE, ent.perks, 3);
+        if (!options.length) return;
+        ent.perkChoiceOptions = options;
+        ent.perkPendingChoice = true;
+        ent.perkNextKillThreshold += ent.perkThresholdStep;
+
+        if (ent === this.player) {
+            this.showPerkChoice(options);
+        } else {
+            const pick = options[Math.floor(Math.random() * options.length)];
+            if (pick) ent.addPerk(pick.id);
+            ent.perkPendingChoice = false;
+            ent.perkChoiceOptions = [];
+        }
+    }
+
+    showPerkChoice(options) {
+        const wrap = document.getElementById('perk-choice');
+        const list = document.getElementById('perk-options');
+        const confirm = document.getElementById('perk-confirm');
+        if (!wrap || !list || !confirm) return;
+
+        this.selectedPerkId = options[0] ? options[0].id : null;
+        list.innerHTML = '';
+        for (let i = 0; i < options.length; i++) {
+            const perk = options[i];
+            const btn = document.createElement('button');
+            btn.className = 'btn-main';
+            btn.innerHTML = `${perk.name}<br><small>${perk.desc}</small>`;
+            btn.style.margin = '8px';
+            btn.style.opacity = i === 0 ? '1' : '0.7';
+            btn.addEventListener('click', () => {
+                this.selectedPerkId = perk.id;
+                const children = list.children;
+                for (let j = 0; j < children.length; j++) children[j].style.opacity = '0.7';
+                btn.style.opacity = '1';
+            });
+            list.appendChild(btn);
+        }
+        wrap.style.display = 'flex';
+    }
+
+    applySelectedPerk() {
+        if (!this.player || !this.player.perkPendingChoice) return;
+        const options = this.player.perkChoiceOptions || [];
+        let perk = options.find(p => p.id === this.selectedPerkId) || options[0];
+        if (!perk) return;
+        this.player.addPerk(perk.id);
+        this.player.perkPendingChoice = false;
+        this.player.perkChoiceOptions = [];
+        this.selectedPerkId = null;
+        const wrap = document.getElementById('perk-choice');
+        if (wrap) wrap.style.display = 'none';
+    }
     
     loop() {
         try {
@@ -2450,6 +2749,12 @@ class Game {
             this.player.input.jump = this.input.keys['KeyW'];
             this.player.input.shoot = this.input.mouse.down;
             this.player.input.aimTarget = this.input.mouse.worldPos;
+            if (this.player.perkPendingChoice) {
+                this.player.input.left = false;
+                this.player.input.right = false;
+                this.player.input.jump = false;
+                this.player.input.shoot = false;
+            }
         }
         
         const aiStride = Math.max(1, Math.floor(this.aliveEntities.length / 12));
