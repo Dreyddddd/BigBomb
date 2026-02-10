@@ -439,12 +439,19 @@ class ParticleSystem {
         this.activeParticles.push(particle);
         this.activeCount++;
     }
-    updateAndDraw(ctx, game) {
+    updateAndDraw(ctx, game, perfLevel = 0) {
+        const stride = perfLevel >= 2 ? 2 : 1;
         for (let i = this.activeParticles.length - 1; i >= 0; i--) {
             const particle = this.activeParticles[i];
+            if (stride > 1 && (i % stride) !== (game.tick % stride)) {
+                particle.draw(ctx, game.camera);
+                continue;
+            }
             particle.update(game);
             if (!particle.active) {
-                this.activeParticles.splice(i, 1);
+                const lastIdx = this.activeParticles.length - 1;
+                this.activeParticles[i] = this.activeParticles[lastIdx];
+                this.activeParticles.pop();
                 this.activeCount = Math.max(0, this.activeCount - 1);
                 this.freeParticles.push(particle);
                 continue;
@@ -2356,6 +2363,9 @@ class Game {
         this.vignetteCtx = this.vignetteCanvas.getContext('2d');
         
         this.roundOver = false;
+        this.frameTimeEMA = 16;
+        this.perfLevel = 0;
+        this.lastFrameTs = 0;
 
         window.addEventListener('keydown', e => {
             if (e.code === 'Tab') {
@@ -2748,8 +2758,15 @@ class Game {
         if (wrap) wrap.style.display = 'none';
     }
     
-    loop() {
+    loop(ts = 0) {
         try {
+            if (!this.lastFrameTs) this.lastFrameTs = ts;
+            const dt = ts - this.lastFrameTs;
+            this.lastFrameTs = ts;
+            this.frameTimeEMA = this.frameTimeEMA * 0.92 + dt * 0.08;
+            if (this.frameTimeEMA > 24) this.perfLevel = 2;
+            else if (this.frameTimeEMA > 18) this.perfLevel = 1;
+            else this.perfLevel = 0;
             if (this.gameState === 'PLAYING' && !this.gameOver && !this.paused) {
                 this.update();
             }
@@ -2757,7 +2774,7 @@ class Game {
         } catch (err) {
             console.error('Game loop error:', err);
         } finally {
-            requestAnimationFrame(() => this.loop());
+            requestAnimationFrame((t) => this.loop(t));
         }
     }
 
@@ -2942,14 +2959,19 @@ class Game {
             obj.pos.x >= viewLeft && obj.pos.x <= viewRight &&
             obj.pos.y >= viewTop && obj.pos.y <= viewBottom;
 
-        this.bases.forEach(b => b.draw(this.ctx));
-        this.flags.forEach(f => f.draw(this.ctx));
-        this.crates.forEach(c => { if (inView(c)) c.draw(this.ctx); });
-        this.fires.forEach(f => { if (inView(f)) f.draw(this.ctx); });
-        this.effects.forEach(f => { if (inView(f)) f.draw(this.ctx); else if (!f.pos) f.draw(this.ctx); });
-        this.entities.forEach(e => { if (inView(e)) e.draw(this.ctx); });
-        this.projectiles.forEach(p => { if (inView(p)) p.draw(this.ctx); });
-        this.particleSystem.updateAndDraw(this.ctx, this);
+        for (let i = 0; i < this.bases.length; i++) this.bases[i].draw(this.ctx);
+        for (let i = 0; i < this.flags.length; i++) this.flags[i].draw(this.ctx);
+        for (let i = 0; i < this.crates.length; i++) { const c = this.crates[i]; if (inView(c)) c.draw(this.ctx); }
+        for (let i = 0; i < this.fires.length; i++) { const f = this.fires[i]; if (inView(f)) f.draw(this.ctx); }
+        for (let i = 0; i < this.effects.length; i++) { const f = this.effects[i]; if (inView(f)) f.draw(this.ctx); else if (!f.pos) f.draw(this.ctx); }
+        for (let i = 0; i < this.entities.length; i++) { const e = this.entities[i]; if (inView(e)) e.draw(this.ctx); }
+        const projectileStride = this.perfLevel >= 2 ? 2 : 1;
+        for (let i = 0; i < this.projectiles.length; i++) {
+            if (projectileStride > 1 && (i % projectileStride) !== (this.tick % projectileStride)) continue;
+            const p = this.projectiles[i];
+            if (inView(p)) p.draw(this.ctx);
+        }
+        this.particleSystem.updateAndDraw(this.ctx, this, this.perfLevel);
         
         if (this.gameState === 'PLAYING' && this.player && !this.player.dead && !this.paused) {
             this.ctx.strokeStyle = 'rgba(255,255,255,0.3)'; this.ctx.setLineDash([5, 5]); this.ctx.beginPath();
@@ -2959,10 +2981,10 @@ class Game {
         }
         
         this.ctx.restore();
-        if (this.player && this.player.hp <= 30) {
+        if (this.player && this.player.hp <= 30 && this.perfLevel < 2) {
             this.ctx.drawImage(this.vignetteCanvas, 0, 0);
         }
-        if (this.noisePattern) {
+        if (this.noisePattern && this.perfLevel === 0) {
             this.ctx.globalAlpha = 0.04;
             this.ctx.fillStyle = this.noisePattern;
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
