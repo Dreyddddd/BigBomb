@@ -1133,6 +1133,8 @@ class Projectile {
         if (type.type === 'bounce') this.timer = 180;
         this.trail = []; 
         this.lastDrillDestroyTick = -999;
+        this.piercedTargets = new Set();
+        this.piercedOnce = false;
     }
 
     update(terrain, particleSystem, entities, game) {
@@ -1223,6 +1225,7 @@ class Projectile {
                 if (ent.dead) continue;
                 if (ent.id === this.ownerId && distSq(this.pos, ent.pos) < 20 * 20) continue; 
                 if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team) continue;
+                if (this.piercedTargets.has(ent.id)) continue;
                 
                 // Check distance from entity center to the movement segment
                 let distToTrajectory = distToSegmentSquared(ent.pos, this.pos, nextPos);
@@ -1242,7 +1245,13 @@ class Projectile {
         }
 
         if (hitEntity && !hitWall) {
-             this.pos = hitEntity.pos.clone().sub(this.vel.normalize().mult(5)); // Visual fix
+             const hitPos = hitEntity.pos.clone().sub(this.vel.normalize().mult(5));
+             this.pos = hitPos;
+             if (this.tryPierceEntity(hitEntity, game)) {
+                 this.pos = nextPos;
+                 return;
+             }
+             if (this.trySplitOnCollision(game, hitPos)) return;
              this.explode(terrain, particleSystem, game);
              return;
         }
@@ -1272,6 +1281,8 @@ class Projectile {
                  this.active = false;
                  return;
              }
+
+             if (this.trySplitOnCollision(game, this.pos.clone())) return;
              
              // Bouncing
              if (this.bounces > 0 || this.type.type === 'bounce') {
@@ -1301,6 +1312,47 @@ class Projectile {
         if (this.pos.y > CONFIG.WORLD_HEIGHT) {
             this.active = false;
         }
+    }
+
+
+    trySplitOnCollision(game, collisionPos) {
+        if (this.type.type !== 'energy' || this.didSplit) return false;
+        const owner = game.entities.find(e => e.id === this.ownerId);
+        if (!owner || !owner.perkModifiers || !owner.perkModifiers.plasmaSplit) return false;
+
+        this.didSplit = true;
+        this.active = false;
+        const spawnPos = collisionPos || this.pos.clone();
+        for (let i = 0; i < 2; i++) {
+            const spread = i === 0 ? -0.28 : 0.28;
+            const rotated = new Vector2(
+                this.vel.x * Math.cos(spread) - this.vel.y * Math.sin(spread),
+                this.vel.x * Math.sin(spread) + this.vel.y * Math.cos(spread)
+            );
+            const splitType = { ...this.type };
+            const child = new Projectile(spawnPos.clone(), rotated.mult(0.9), splitType, this.ownerId, this.team);
+            child.didSplit = true;
+            game.projectiles.push(child);
+        }
+        return true;
+    }
+
+    tryPierceEntity(hitEntity, game) {
+        if (this.piercedOnce) return false;
+        if (this.type.type !== 'highspeed' && this.type.type !== 'laser') return false;
+        const owner = game.entities.find(e => e.id === this.ownerId);
+        if (!owner || !owner.perkModifiers || !owner.perkModifiers.pierce) return false;
+
+        let damage = this.type.damage;
+        if (owner.damageMultiplier) damage *= owner.damageMultiplier;
+        if (owner.getOutgoingDamageMultiplier) damage *= owner.getOutgoingDamageMultiplier(hitEntity, game);
+        hitEntity.takeDamage(Math.max(0, damage), this.ownerId, game, this.type.type);
+        const pushDir = hitEntity.pos.sub(this.pos).normalize();
+        hitEntity.vel = hitEntity.vel.add(pushDir.mult(3.2));
+
+        this.piercedOnce = true;
+        this.piercedTargets.add(hitEntity.id);
+        return true;
     }
 
     explode(terrain, particleSystem, game) {
@@ -1515,7 +1567,7 @@ class Character {
         this.pos = new Vector2(x, y); this.vel = new Vector2(0, 0);
         this.size = new Vector2(32, 44); 
         this.colliderHalfWidth = 16;
-        this.colliderTop = 34;
+        this.colliderTop = 42;
         this.colliderBottom = 22;
         this.colliderCornerRadius = 6;
         this.color = (CONFIG.GAME_MODE !== 'DM' && team !== 0) ? TEAMS[team].color : color;
