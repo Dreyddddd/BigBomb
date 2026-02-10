@@ -1131,6 +1131,7 @@ class Projectile {
     constructor(pos, vel, type, ownerId, team = 0) {
         this.pos = pos; this.vel = vel; this.type = type; this.ownerId = ownerId; this.team = team;
         this.active = true; this.timer = 0;
+        this.ownerCollisionGrace = 6;
         this.bounces = type.bounces || 0;
         if (type.type === 'bounce') this.timer = 180;
         this.trail = []; 
@@ -1141,6 +1142,7 @@ class Projectile {
 
     update(terrain, particleSystem, entities, game) {
         if (!this.active) return;
+        if (this.ownerCollisionGrace > 0) this.ownerCollisionGrace--;
         
         if (this.type.type === 'fire_droplet') {
             this.pos = this.pos.add(this.vel); this.vel.y += CONFIG.GRAVITY; 
@@ -1225,7 +1227,7 @@ class Projectile {
             for (let i = 0; i < candidates.length; i++) {
                 const ent = candidates[i];
                 if (ent.dead) continue;
-                if (ent.id === this.ownerId && distSq(this.pos, ent.pos) < 20 * 20) continue; 
+                if (ent.id === this.ownerId && this.ownerCollisionGrace > 0) continue;
                 if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team) continue;
                 if (this.piercedTargets.has(ent.id)) continue;
                 
