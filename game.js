@@ -1226,7 +1226,9 @@ class Projectile {
                 
                 // Check distance from entity center to the movement segment
                 let distToTrajectory = distToSegmentSquared(ent.pos, this.pos, nextPos);
-                let hitRadius = (this.type.type === 'laser' ? 10 : Math.max(ent.size.x, ent.size.y) / 2);
+                let hitRadius = this.type.type === 'laser'
+                    ? 10
+                    : Math.max(ent.size.x * 0.55, ent.size.y * 0.35);
                 
                 if (distToTrajectory < hitRadius * hitRadius) {
                      // Check if this hit is closer than previous hits
@@ -1512,6 +1514,10 @@ class Character {
         this.id = id; this.name = name; this.team = team;
         this.pos = new Vector2(x, y); this.vel = new Vector2(0, 0);
         this.size = new Vector2(32, 44); 
+        this.colliderHalfWidth = 16;
+        this.colliderTop = 34;
+        this.colliderBottom = 22;
+        this.colliderCornerRadius = 6;
         this.color = (CONFIG.GAME_MODE !== 'DM' && team !== 0) ? TEAMS[team].color : color;
         this.grounded = false; this.facingRight = true;
         this.dead = false; this.hp = 100;
@@ -1790,13 +1796,26 @@ class Character {
 
         // Collision
         let nextX = this.pos.x + this.vel.x;
-        let hw = this.size.x / 2; let hh = this.size.y / 2; let feetY = this.pos.y + hh - 5;
+        let hw = this.colliderHalfWidth;
+        let topExtent = this.colliderTop;
+        let bottomExtent = this.colliderBottom;
+        let cornerRadius = this.colliderCornerRadius;
+        let topY = this.pos.y - topExtent + 2;
+        let midY = this.pos.y;
+        let lowerSideY = this.pos.y + bottomExtent - cornerRadius - 1;
         let sideOffset = this.vel.x > 0 ? hw : -hw;
-        if (terrain.isSolid(nextX + sideOffset, this.pos.y) || terrain.isSolid(nextX + sideOffset, feetY)) {
+        if (
+            terrain.isSolid(nextX + sideOffset, topY) ||
+            terrain.isSolid(nextX + sideOffset, midY) ||
+            terrain.isSolid(nextX + sideOffset, lowerSideY)
+        ) {
              let climbed = false;
              if (this.grounded) {
                  for(let s=1; s<=5; s++) {
-                     if (!terrain.isSolid(nextX + sideOffset, feetY - s) && !terrain.isSolid(nextX, this.pos.y - s - hh)) {
+                     if (
+                        !terrain.isSolid(nextX + sideOffset, lowerSideY - s) &&
+                        !terrain.isSolid(nextX, this.pos.y - s - topExtent)
+                     ) {
                          this.pos.y -= s; climbed = true; break;
                      }
                  }
@@ -1806,12 +1825,18 @@ class Character {
         this.pos.x = nextX;
         
         let nextY = this.pos.y + this.vel.y;
-        if (this.vel.y < 0 && terrain.isSolid(this.pos.x, nextY - hh)) { this.vel.y = 0; nextY = this.pos.y; }
-        if (this.vel.y >= 0 && terrain.isSolid(this.pos.x, nextY + hh)) {
+        const footProbeOffset = Math.max(2, hw - cornerRadius);
+        const footProbeBlocked = (yPos) => (
+            terrain.isSolid(this.pos.x, yPos) ||
+            terrain.isSolid(this.pos.x - footProbeOffset, yPos) ||
+            terrain.isSolid(this.pos.x + footProbeOffset, yPos)
+        );
+        if (this.vel.y < 0 && terrain.isSolid(this.pos.x, nextY - topExtent)) { this.vel.y = 0; nextY = this.pos.y; }
+        if (this.vel.y >= 0 && footProbeBlocked(nextY + bottomExtent)) {
             this.grounded = true; this.vel.y = 0;
             let t = nextY;
             let safety = 0;
-            while (terrain.isSolid(this.pos.x, t + hh) && safety < 400) {
+            while (footProbeBlocked(t + bottomExtent) && safety < 400) {
                 t--;
                 safety++;
             }
@@ -1853,20 +1878,29 @@ class Character {
         let power = (this.charge / CONFIG.MAX_CHARGE) * 10 + 5; 
         if (!this.weapon.chargeable) power = 12;
         let dir = this.input.aimTarget.sub(this.pos).normalize();
+        const muzzlePos = this.getMuzzlePosition(dir);
 
         if (this.weapon.type === 'shotgun') {
             for(let i=0; i<5; i++) {
                 let spread = new Vector2(dir.y, -dir.x).mult((Math.random()-0.5)*0.5 * this.perkModifiers.shotgunSpread);
-                let p = new Projectile(this.pos.clone(), dir.add(spread).normalize().mult(power), this.weapon, this.id, this.team);
+                let p = new Projectile(muzzlePos.clone(), dir.add(spread).normalize().mult(power), this.weapon, this.id, this.team);
                 game.projectiles.push(p);
             }
         } else if (this.weapon.type === 'laser') {
-             let p = new Projectile(this.pos.clone(), dir.mult(power*2), this.weapon, this.id, this.team);
+             let p = new Projectile(muzzlePos.clone(), dir.mult(power*2), this.weapon, this.id, this.team);
              game.projectiles.push(p);
         } else {
-            let p = new Projectile(this.pos.clone(), dir.mult(power), this.weapon, this.id, this.team);
+            let p = new Projectile(muzzlePos.clone(), dir.mult(power), this.weapon, this.id, this.team);
             game.projectiles.push(p);
         }
+    }
+
+    getMuzzlePosition(dir) {
+        const muzzleForward = 20;
+        const muzzleUp = -4;
+        const right = dir.normalize();
+        const up = new Vector2(-right.y, right.x);
+        return this.pos.add(right.mult(muzzleForward)).add(up.mult(muzzleUp));
     }
 
     draw(ctx) {
