@@ -48,7 +48,66 @@ body {
             width: 100%;
             align-items: flex-start;
         }
-        .hud-left { display: flex; gap: 20px; align-items: flex-start; }
+.hud-left { display: flex; gap: 20px; align-items: flex-start; }
+
+#perk-choice {
+    position: absolute;
+    left: 20px;
+    top: 90px;
+    width: 320px;
+    max-width: calc(100vw - 40px);
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(8, 10, 16, 0.78);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
+    backdrop-filter: blur(4px);
+}
+
+.perk-title {
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    color: #ffe082;
+}
+
+#perk-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#perk-options .btn-main {
+    width: 100%;
+    text-align: left;
+    font-size: 13px;
+    padding: 8px 10px;
+    line-height: 1.2;
+    opacity: 0.82;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+#perk-options .btn-main.active {
+    opacity: 1;
+    border-color: #f1c40f;
+    box-shadow: 0 0 0 1px rgba(241,196,15,0.45) inset;
+}
+
+#perk-options .btn-main small {
+    display: block;
+    margin-top: 2px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+#perk-confirm {
+    align-self: flex-end;
+    padding: 8px 12px;
+    font-size: 12px;
+}
         
         .hud-right { 
             display: flex; 

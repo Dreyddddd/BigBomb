@@ -2669,15 +2669,15 @@ class Game {
         for (let i = 0; i < options.length; i++) {
             const perk = options[i];
             const btn = document.createElement('button');
-            btn.className = 'btn-main';
+            btn.className = 'btn-main perk-option-btn';
             btn.innerHTML = `${perk.name}<br><small>${perk.desc}</small>`;
-            btn.style.margin = '8px';
-            btn.style.opacity = i === 0 ? '1' : '0.7';
+            if (i === 0) btn.classList.add('active');
             btn.addEventListener('click', () => {
                 this.selectedPerkId = perk.id;
                 const children = list.children;
-                for (let j = 0; j < children.length; j++) children[j].style.opacity = '0.7';
-                btn.style.opacity = '1';
+                for (let j = 0; j < children.length; j++) children[j].classList.remove('active');
+                btn.classList.add('active');
+                this.applySelectedPerk();
             });
             list.appendChild(btn);
         }
@@ -2783,12 +2783,6 @@ class Game {
             this.player.input.jump = this.input.keys['KeyW'];
             this.player.input.shoot = this.input.mouse.down;
             this.player.input.aimTarget = this.input.mouse.worldPos;
-            if (this.player.perkPendingChoice) {
-                this.player.input.left = false;
-                this.player.input.right = false;
-                this.player.input.jump = false;
-                this.player.input.shoot = false;
-            }
         }
         
         const aiStride = Math.max(1, Math.floor(this.aliveEntities.length / 12));
