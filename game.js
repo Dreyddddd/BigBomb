@@ -1171,17 +1171,11 @@ class Projectile {
                 if (ent.id === this.ownerId && distSq(this.pos, ent.pos) < 20 * 20) continue; 
                 if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team) continue;
                 
-                // Check distance from entity center/head to the movement segment
+                // Check distance from entity center to the movement segment
                 let distToTrajectory = distToSegmentSquared(ent.pos, this.pos, nextPos);
-                let hitRadius = (this.type.type === 'laser' ? 10 : 15); // Increased laser hit radius
-                let headHit = false;
-                if (ent.headCollider) {
-                    const headPos = ent.pos.add(new Vector2(0, ent.headCollider.offsetY));
-                    const headRadius = ent.headCollider.radius || 0;
-                    headHit = distToSegmentSquared(headPos, this.pos, nextPos) < headRadius * headRadius;
-                }
+                let hitRadius = (this.type.type === 'laser' ? 10 : Math.max(ent.size.x, ent.size.y) / 2);
                 
-                if (headHit || distToTrajectory < hitRadius * hitRadius) {
+                if (distToTrajectory < hitRadius * hitRadius) {
                      // Check if this hit is closer than previous hits
                      let d = distSq(this.pos, ent.pos);
                      if (d < closestDist) {
@@ -1431,7 +1425,7 @@ class Character {
     constructor(x, y, id, color, name, team = 0, cosmetics = null) {
         this.id = id; this.name = name; this.team = team;
         this.pos = new Vector2(x, y); this.vel = new Vector2(0, 0);
-        this.size = new Vector2(14, 26); 
+        this.size = new Vector2(32, 44); 
         this.color = (CONFIG.GAME_MODE !== 'DM' && team !== 0) ? TEAMS[team].color : color;
         this.grounded = false; this.facingRight = true;
         this.dead = false; this.hp = 100;
@@ -1445,7 +1439,6 @@ class Character {
         this.buffs = [];
         this.jumpMultiplier = 1; this.speedMultiplier = 1; this.damageMultiplier = 1; this.isShielded = false;
         this.cosmetics = cosmetics ? { ...defaultCosmetics(), ...cosmetics } : defaultCosmetics();
-        this.headCollider = { offsetY: -34, radius: 17 };
         
         this.respawnTimer = 0; // CTF Individual Timer
     }
@@ -1508,8 +1501,6 @@ class Character {
     update(terrain, projectiles, crates, game) {
         this.updateBuffs();
         this.animTimer += 0.1;
-        this.headCollider.offsetY = -34;
-        this.headCollider.radius = 17;
         
         // CTF Respawn
         if (this.dead && CONFIG.GAME_MODE === 'CTF') {
