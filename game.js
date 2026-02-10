@@ -439,14 +439,9 @@ class ParticleSystem {
         this.activeParticles.push(particle);
         this.activeCount++;
     }
-    updateAndDraw(ctx, game, perfLevel = 0) {
-        const stride = perfLevel >= 2 ? 2 : 1;
+    updateAndDraw(ctx, game) {
         for (let i = this.activeParticles.length - 1; i >= 0; i--) {
             const particle = this.activeParticles[i];
-            if (stride > 1 && (i % stride) !== (game.tick % stride)) {
-                particle.draw(ctx, game.camera);
-                continue;
-            }
             particle.update(game);
             if (!particle.active) {
                 const lastIdx = this.activeParticles.length - 1;
@@ -1235,10 +1230,14 @@ class Projectile {
                 if (this.piercedTargets.has(ent.id)) continue;
                 
                 // Check distance from entity center to the movement segment
-                let distToTrajectory = distToSegmentSquared(ent.pos, this.pos, nextPos);
-                let hitRadius = this.type.type === 'laser'
-                    ? 10
-                    : Math.max(ent.size.x * 0.55, ent.size.y * 0.35);
+                let collisionCenter = ent.pos;
+                let hitRadius = this.type.type === 'laser' ? 10 : Math.max(ent.size.x * 0.5, ent.size.y * 0.5);
+                if (ent.colliderTop !== undefined && ent.colliderBottom !== undefined && ent.colliderHalfWidth !== undefined) {
+                    const verticalShift = (ent.colliderTop - ent.colliderBottom) * 0.35;
+                    collisionCenter = ent.pos.add(new Vector2(0, -verticalShift));
+                    hitRadius = Math.max(ent.colliderHalfWidth + 3, (ent.colliderTop + ent.colliderBottom) * 0.5);
+                }
+                let distToTrajectory = distToSegmentSquared(collisionCenter, this.pos, nextPos);
                 
                 if (distToTrajectory < hitRadius * hitRadius) {
                      // Check if this hit is closer than previous hits
@@ -1279,7 +1278,7 @@ class Projectile {
                  return;
              } 
              if (this.type.type === 'teleport') {
-                 let owner = entities.find(e => e.id === this.ownerId);
+                 let owner = game.getEntityById(this.ownerId);
                  if(owner) {
                     owner.pos = this.pos.clone();
                     owner.vel = new Vector2(0,0);
@@ -1324,7 +1323,7 @@ class Projectile {
 
     trySplitOnCollision(game, collisionPos) {
         if (this.type.type !== 'energy' || this.didSplit) return false;
-        const owner = game.entities.find(e => e.id === this.ownerId);
+        const owner = game.getEntityById(this.ownerId);
         if (!owner || !owner.perkModifiers || !owner.perkModifiers.plasmaSplit) return false;
 
         this.didSplit = true;
@@ -1347,7 +1346,7 @@ class Projectile {
     tryPierceEntity(hitEntity, game) {
         if (this.piercedOnce) return false;
         if (this.type.type !== 'highspeed' && this.type.type !== 'laser') return false;
-        const owner = game.entities.find(e => e.id === this.ownerId);
+        const owner = game.getEntityById(this.ownerId);
         if (!owner || !owner.perkModifiers || !owner.perkModifiers.pierce) return false;
 
         let damage = this.type.damage;
@@ -1371,7 +1370,7 @@ class Projectile {
 
         if (this.type.type === 'molotov' || (this.type.burn && this.type.burn > 0)) {
              let fireCount = this.type.burn || 10;
-             const owner = game.entities.find(e => e.id === this.ownerId);
+             const owner = game.getEntityById(this.ownerId);
              if (owner && owner.perkModifiers) fireCount += owner.perkModifiers.fireTrailBonus;
              for(let i=0; i<fireCount; i++) {
                  let v = new Vector2((Math.random()-0.5)*8, -2 - Math.random()*5);
@@ -1391,7 +1390,7 @@ class Projectile {
             }
         }
 
-        const owner = game.entities.find(e => e.id === this.ownerId) || null;
+        const owner = game.getEntityById(this.ownerId);
         let effectiveRadius = this.type.radius;
         if (owner && owner.perkModifiers) {
             if (this.type.type === 'explosive') effectiveRadius *= owner.perkModifiers.bazookaRadius;
@@ -1757,7 +1756,7 @@ class Character {
             for(let i=0; i<6; i++) game.particleSystem.emit(this.pos.clone(), new Vector2((Math.random()-0.5)*6, -Math.random()*6), 100, '#660000', 'chunk');
 
             if (attackerId !== undefined && attackerId !== null && attackerId !== this.id) {
-                let killer = game.entities.find(e => e.id === attackerId);
+                let killer = game.getEntityById(attackerId);
                 if (killer) {
                     killer.kills++;
                     killer.onKill(game);
@@ -1766,7 +1765,7 @@ class Character {
             } 
             
             if (this === game.player && attackerId !== undefined && attackerId !== null) {
-                const killer = game.entities.find(e => e.id === attackerId);
+                const killer = game.getEntityById(attackerId);
                 if (killer) game.cameraTarget = killer;
             }
             game.checkWinCondition();
@@ -1889,7 +1888,13 @@ class Character {
             terrain.isSolid(this.pos.x - footProbeOffset, yPos) ||
             terrain.isSolid(this.pos.x + footProbeOffset, yPos)
         );
-        if (this.vel.y < 0 && terrain.isSolid(this.pos.x, nextY - topExtent)) { this.vel.y = 0; nextY = this.pos.y; }
+        const topProbeOffset = Math.max(2, hw - 2);
+        const topBlocked = (yPos) => (
+            terrain.isSolid(this.pos.x, yPos) ||
+            terrain.isSolid(this.pos.x - topProbeOffset, yPos) ||
+            terrain.isSolid(this.pos.x + topProbeOffset, yPos)
+        );
+        if (this.vel.y < 0 && topBlocked(nextY - topExtent)) { this.vel.y = 0; nextY = this.pos.y; }
         if (this.vel.y >= 0 && footProbeBlocked(nextY + bottomExtent)) {
             this.grounded = true; this.vel.y = 0;
             let t = nextY;
@@ -2353,6 +2358,7 @@ class Game {
         this.blackHoles = [];
         this.selectedPerkId = null;
         this.entityGrid = new SpatialGrid(CONFIG.SPATIAL_GRID_SIZE, CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT);
+        this.entityById = new Map();
         
         this.particleSystem = new ParticleSystem();
         this.background = new BackgroundGenerator(CONFIG.WORLD_WIDTH, CONFIG.WORLD_HEIGHT);
@@ -2363,9 +2369,15 @@ class Game {
         this.vignetteCtx = this.vignetteCanvas.getContext('2d');
         
         this.roundOver = false;
-        this.frameTimeEMA = 16;
-        this.perfLevel = 0;
-        this.lastFrameTs = 0;
+        this.lastHpUiValue = -1;
+        this.dom = {
+            hpDisplay: document.getElementById('hp-display'),
+            statsBody: document.getElementById('stats-body'),
+            ctfRespawnTimer: document.getElementById('ctf-respawn-timer'),
+            respawnTimeVal: document.getElementById('respawn-time-val'),
+            scoreBlue: document.getElementById('score-blue'),
+            scoreRed: document.getElementById('score-red')
+        };
 
         window.addEventListener('keydown', e => {
             if (e.code === 'Tab') {
@@ -2517,10 +2529,10 @@ class Game {
         document.getElementById('team-hud').style.display = CONFIG.GAME_MODE === 'DM' ? 'none' : 'flex';
         
         // Hide/Show timer based on mode (Only shows during death now in CTF)
-        document.getElementById('ctf-respawn-timer').style.display = 'none';
+        if (this.dom.ctfRespawnTimer) this.dom.ctfRespawnTimer.style.display = 'none';
         
-        document.getElementById('score-blue').innerText = "0";
-        document.getElementById('score-red').innerText = "0";
+        if (this.dom.scoreBlue) this.dom.scoreBlue.innerText = "0";
+        if (this.dom.scoreRed) this.dom.scoreRed.innerText = "0";
         
         this.updateInventoryUI();
     }
@@ -2541,8 +2553,8 @@ class Game {
     
     scoreTeam(teamId, amt) {
         this.scores[teamId] += amt;
-        document.getElementById('score-blue').innerText = this.scores[1];
-        document.getElementById('score-red').innerText = this.scores[2];
+        if (this.dom.scoreBlue) this.dom.scoreBlue.innerText = this.scores[1];
+        if (this.dom.scoreRed) this.dom.scoreRed.innerText = this.scores[2];
         this.checkWinCondition();
     }
     
@@ -2649,11 +2661,11 @@ class Game {
     
     updateWaveRespawn() {
         // Now only used for displaying personal timer in CTF
-        const timer = document.getElementById('ctf-respawn-timer');
+        const timer = this.dom.ctfRespawnTimer;
         if (!timer) return;
         if (CONFIG.GAME_MODE === 'CTF' && this.player && this.player.dead) {
              timer.style.display = 'block';
-             const respawnVal = document.getElementById('respawn-time-val');
+             const respawnVal = this.dom.respawnTimeVal;
              if (respawnVal) {
                  respawnVal.innerText = Math.ceil(this.player.respawnTimer / 60);
              }
@@ -2665,6 +2677,10 @@ class Game {
     getNearbyEntities(pos, radius) {
         if (!this.entityGrid) return this.aliveEntities;
         return this.entityGrid.queryRadius(pos, radius);
+    }
+
+    getEntityById(id) {
+        return this.entityById.get(id) || null;
     }
 
     shakeScreen(amount) { this.shake = amount; }
@@ -2758,15 +2774,8 @@ class Game {
         if (wrap) wrap.style.display = 'none';
     }
     
-    loop(ts = 0) {
+    loop() {
         try {
-            if (!this.lastFrameTs) this.lastFrameTs = ts;
-            const dt = ts - this.lastFrameTs;
-            this.lastFrameTs = ts;
-            this.frameTimeEMA = this.frameTimeEMA * 0.92 + dt * 0.08;
-            if (this.frameTimeEMA > 24) this.perfLevel = 2;
-            else if (this.frameTimeEMA > 18) this.perfLevel = 1;
-            else this.perfLevel = 0;
             if (this.gameState === 'PLAYING' && !this.gameOver && !this.paused) {
                 this.update();
             }
@@ -2774,7 +2783,7 @@ class Game {
         } catch (err) {
             console.error('Game loop error:', err);
         } finally {
-            requestAnimationFrame((t) => this.loop(t));
+            requestAnimationFrame(() => this.loop());
         }
     }
 
@@ -2789,11 +2798,13 @@ class Game {
         this.updateWaveRespawn();
 
         this.aliveEntities.length = 0;
+        this.entityById.clear();
         this.activeCrates.length = 0;
         this.medkits.length = 0;
         this.weaponCrates.length = 0;
         for (let i = 0; i < this.entities.length; i++) {
             const ent = this.entities[i];
+            this.entityById.set(ent.id, ent);
             if (!ent.dead) this.aliveEntities.push(ent);
         }
         for (let i = 0; i < this.crates.length; i++) {
@@ -2909,7 +2920,7 @@ class Game {
             }
         }
         
-        if (this.statsVisible && (this.statsDirty || this.tick % 10 === 0)) {
+        if (this.statsVisible && (this.statsDirty || this.tick % 20 === 0)) {
             let html = '';
             const sortedEntities = [...this.entities].sort((a,b)=>b.kills-a.kills);
             sortedEntities.forEach(e => {
@@ -2917,12 +2928,18 @@ class Game {
                 if (e === this.player) cls += ' row-me';
                 html += `<tr class="${cls}"><td>${e.name}</td><td>${e.kills}</td><td>${e.deaths}</td><td>${TEAMS[e.team].name}</td></tr>`;
             });
-            const statsBody = document.getElementById('stats-body');
+            const statsBody = this.dom.statsBody;
             if (statsBody) statsBody.innerHTML = html;
             this.statsDirty = false;
         }
-        const hpDisplay = document.getElementById('hp-display');
-        if (hpDisplay && this.player) hpDisplay.innerText = Math.floor(this.player.hp);
+        const hpDisplay = this.dom.hpDisplay;
+        if (hpDisplay && this.player) {
+            const hpVal = Math.floor(this.player.hp);
+            if (hpVal !== this.lastHpUiValue) {
+                hpDisplay.innerText = hpVal;
+                this.lastHpUiValue = hpVal;
+            }
+        }
     }
 
     draw() {
@@ -2965,13 +2982,11 @@ class Game {
         for (let i = 0; i < this.fires.length; i++) { const f = this.fires[i]; if (inView(f)) f.draw(this.ctx); }
         for (let i = 0; i < this.effects.length; i++) { const f = this.effects[i]; if (inView(f)) f.draw(this.ctx); else if (!f.pos) f.draw(this.ctx); }
         for (let i = 0; i < this.entities.length; i++) { const e = this.entities[i]; if (inView(e)) e.draw(this.ctx); }
-        const projectileStride = this.perfLevel >= 2 ? 2 : 1;
         for (let i = 0; i < this.projectiles.length; i++) {
-            if (projectileStride > 1 && (i % projectileStride) !== (this.tick % projectileStride)) continue;
             const p = this.projectiles[i];
             if (inView(p)) p.draw(this.ctx);
         }
-        this.particleSystem.updateAndDraw(this.ctx, this, this.perfLevel);
+        this.particleSystem.updateAndDraw(this.ctx, this);
         
         if (this.gameState === 'PLAYING' && this.player && !this.player.dead && !this.paused) {
             this.ctx.strokeStyle = 'rgba(255,255,255,0.3)'; this.ctx.setLineDash([5, 5]); this.ctx.beginPath();
@@ -2981,10 +2996,10 @@ class Game {
         }
         
         this.ctx.restore();
-        if (this.player && this.player.hp <= 30 && this.perfLevel < 2) {
+        if (this.player && this.player.hp <= 30) {
             this.ctx.drawImage(this.vignetteCanvas, 0, 0);
         }
-        if (this.noisePattern && this.perfLevel === 0) {
+        if (this.noisePattern) {
             this.ctx.globalAlpha = 0.04;
             this.ctx.fillStyle = this.noisePattern;
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
