@@ -227,17 +227,17 @@ const WeaponType = {
 
 const PERK_LIST = [
     { id: 'tenacity', name: 'Упорство', desc: '+10% к максимальному HP' },
-    { id: 'field_armor', name: 'Полевая броня', desc: 'Входящий взрывной урон -8%' },
-    { id: 'dash', name: 'Рывок', desc: 'Скорость передвижения +6%' },
-    { id: 'high_jump', name: 'Высокий прыжок', desc: 'Сила прыжка +10%' },
+    { id: 'field_armor', name: 'Полевая броня', desc: 'Входящий взрывной урон -10%' },
+    { id: 'dash', name: 'Рывок', desc: 'Скорость передвижения +10%' },
+    { id: 'high_jump', name: 'Высокий прыжок', desc: 'Сила прыжка +15%' },
     { id: 'steady_hand', name: 'Твёрдая рука', desc: 'Разброс дробовика -10%' },
-    { id: 'combat_instinct', name: 'Боевой инстинкт', desc: 'При HP < 35% урон +8%' },
+    { id: 'combat_instinct', name: 'Боевой инстинкт', desc: 'При HP < 35% урон +20%' },
     { id: 'pyrokinesis', name: 'Пирокинез', desc: '50% шанс поджечь поверхность любым оружием' },
     { id: 'fire_resist', name: 'Огнестойкость', desc: 'Урон от огня/молотова -15%' },
-    { id: 'kill_impulse', name: 'Импульс при убийстве', desc: 'После фрага 2 сек. скорость +10%' },
-    { id: 'berserk', name: 'Берсерк', desc: 'После фрага 2 сек. урон +10%' },
+    { id: 'kill_impulse', name: 'Импульс при убийстве', desc: 'После фрага 5 сек. скорость +10%' },
+    { id: 'berserk', name: 'Берсерк', desc: 'После фрага 3 сек. урон +10%' },
     { id: 'loot_scout', name: 'Разведчик лута', desc: 'Подбор ящиков +25% радиуса' },
-    { id: 'sapper', name: 'Сапёр', desc: 'Урон по себе от своих взрывов -12%' },
+    { id: 'sapper', name: 'Сапёр', desc: 'Урон по себе от своих взрывов -15%' },
     { id: 'close_damage', name: 'Убойный центр', desc: '+10% урона если цель ближе 120px' },
     { id: 'far_focus', name: 'Дальний фокус', desc: '+8% урона если цель дальше 450px' },
     { id: 'plasma_split', name: 'Дестабилизатор плазмы', desc: 'PLASMA делится на 2 при столкновении' },
@@ -1434,7 +1434,6 @@ class Projectile {
         }
 
         if (attacker && attacker.perkModifiers && attacker.perkModifiers.pyrokinesis && Math.random() < 0.5 && this.type.type !== 'fire_droplet') {
-            terrain.drawStain(this.pos.x, this.pos.y, 22, 'rgba(230,126,34,0.55)');
             game.fires.push(new Fire(this.pos.clone(), 140));
         }
 
@@ -1648,14 +1647,14 @@ class Character {
         for (let i = 0; i < this.perks.length; i++) {
             const id = this.perks[i];
             if (id === 'tenacity') m.maxHp *= 1.1;
-            else if (id === 'field_armor') m.explosiveTaken *= 0.92;
-            else if (id === 'dash') m.speed *= 1.06;
-            else if (id === 'high_jump') m.jump *= 1.1;
+            else if (id === 'field_armor') m.explosiveTaken *= 0.9;
+            else if (id === 'dash') m.speed *= 1.1;
+            else if (id === 'high_jump') m.jump *= 1.15;
             else if (id === 'steady_hand') m.shotgunSpread *= 0.9;
-            else if (id === 'combat_instinct') m.lowHpDamage *= 1.08;
+            else if (id === 'combat_instinct') m.lowHpDamage *= 1.2;
             else if (id === 'pyrokinesis') m.pyrokinesis = true;
             else if (id === 'fire_resist') m.fireTaken *= 0.85;
-            else if (id === 'sapper') m.selfExplosiveTaken *= 0.88;
+            else if (id === 'sapper') m.selfExplosiveTaken *= 0.85;
             else if (id === 'close_damage') m.closeDamage *= 1.1;
             else if (id === 'far_focus') m.farDamage *= 1.08;
             else if (id === 'plasma_split') m.plasmaSplit = true;
@@ -1712,8 +1711,8 @@ class Character {
     }
 
     onKill(game) {
-        if (this.hasPerk('kill_impulse')) this.killImpulseTimer = 120;
-        if (this.hasPerk('berserk')) this.berserkTimer = 120;
+        if (this.hasPerk('kill_impulse')) this.killImpulseTimer = 300;
+        if (this.hasPerk('berserk')) this.berserkTimer = 180;
         if (this.hasPerk('frag_shield')) this.fragShieldTimer = 72;
         if (this.hasPerk('predator')) this.hp = Math.min(this.getMaxHp(), this.hp + 5);
         if (game) game.tryOfferPerk(this);
