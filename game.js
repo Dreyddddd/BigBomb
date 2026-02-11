@@ -831,6 +831,7 @@ class Terrain {
         this.stonePattern = this.createTexture([100, 100, 100], 0.25); 
         this.bedrockPattern = this.createTexture([40, 40, 40], 0.3); 
         this.dirtyCollisionRegions = [];
+        this.destructibleClipPath = null;
 
         this.generate();
     }
@@ -980,6 +981,7 @@ class Terrain {
         
         this.ctx.globalCompositeOperation = 'source-over';
         this.updateCollisionData(); 
+        this.buildDestructibleClipPath();
 
         // Grass & Trees
         this.ctx.globalCompositeOperation = 'source-atop';
@@ -1038,6 +1040,14 @@ class Terrain {
         const height = Math.max(0, maxY - minY);
         if (width === 0 || height === 0) return;
 
+        const dirtyCount = this.dirtyCollisionRegions.length;
+        const dirtyArea = width * height;
+        const totalArea = this.width * this.height;
+        if (dirtyCount > 120 || dirtyArea > totalArea * 0.35) {
+            this.updateCollisionData();
+            return;
+        }
+
         const regionData = this.ctx.getImageData(minX, minY, width, height).data;
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
@@ -1052,7 +1062,34 @@ class Terrain {
     }
 
     // --- NEW ROBUST CLIPPING LOGIC ---
+    buildDestructibleClipPath() {
+        const baseW = 500;
+        const baseH = this.height - 400;
+        const slopeWidth = 600;
+        const path = new Path2D();
+
+        path.moveTo(0, 0);
+        path.lineTo(this.width, 0);
+        if (CONFIG.GAME_MODE !== 'DM') {
+            path.lineTo(this.width, baseH);
+            path.lineTo(this.width - baseW, baseH);
+            path.lineTo(this.width - baseW - slopeWidth, this.height - 100);
+            path.lineTo(baseW + slopeWidth, this.height - 100);
+            path.lineTo(baseW, baseH);
+            path.lineTo(0, baseH);
+        } else {
+            path.lineTo(this.width, this.height);
+            path.lineTo(0, this.height);
+        }
+        path.closePath();
+        this.destructibleClipPath = path;
+    }
+
     clipToDestructible() {
+        if (!this.destructibleClipPath) this.buildDestructibleClipPath();
+        this.ctx.clip(this.destructibleClipPath);
+        return;
+
         const baseW = 500;
         const baseH = this.height - 400;
         const slopeWidth = 600; 
@@ -1089,7 +1126,8 @@ class Terrain {
             this.clipToDestructible(); // Apply Mask
             this.ctx.globalCompositeOperation = 'source-atop';
             
-            const count = type === 'nuke' ? 500 : 80;
+            const dynamicCount = Math.floor(radius * (type === 'nuke' ? 1.6 : 0.9));
+            const count = type === 'nuke' ? Math.max(160, Math.min(320, dynamicCount)) : Math.max(40, Math.min(160, dynamicCount));
             for(let i=0; i<count; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const dist = radius * (0.85 + Math.random() * 0.3); 
