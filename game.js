@@ -1626,10 +1626,10 @@ class Character {
     constructor(x, y, id, color, name, team = 0, cosmetics = null) {
         this.id = id; this.name = name; this.team = team;
         this.pos = new Vector2(x, y); this.vel = new Vector2(0, 0);
-        this.size = new Vector2(32, 44); 
-        this.colliderHalfWidth = 16;
-        this.colliderTop = 42;
-        this.colliderBottom = 22;
+        this.size = new Vector2(38, 54); 
+        this.colliderHalfWidth = 19;
+        this.colliderTop = 50;
+        this.colliderBottom = 26;
         this.colliderCornerRadius = 6;
         this.color = (CONFIG.GAME_MODE !== 'DM' && team !== 0) ? TEAMS[team].color : color;
         this.grounded = false; this.facingRight = true;
@@ -2015,8 +2015,8 @@ class Character {
     }
 
     getMuzzlePosition(dir) {
-        const muzzleForward = 20;
-        const muzzleUp = -4;
+        const muzzleForward = 24;
+        const muzzleUp = -5;
         const right = dir.normalize();
         const up = new Vector2(-right.y, right.x);
         return this.pos.add(right.mult(muzzleForward)).add(up.mult(muzzleUp));
@@ -2077,11 +2077,11 @@ class Character {
 
         const bootsImg = getBootsImage();
         if (bootsImg && bootsImg.complete && bootsImg.naturalWidth > 0) {
-            const bootW = 10;
-            const bootH = 11;
-            const leftX = -7 + walkCycle;
+            const bootW = 12;
+            const bootH = 14;
+            const leftX = -9 + walkCycle;
             const rightX = 1 - walkCycle;
-            const footY = 6;
+            const footY = 7;
 
             // По умолчанию отражаем ботинок по горизонтали
             ctx.save();
@@ -2100,8 +2100,8 @@ class Character {
 
         const bodyImg = getBodyImage(cosmetics.body);
         if (bodyImg && bodyImg.complete && bodyImg.naturalWidth > 0) {
-            const bodyWidth = 28;
-            const bodyHeight = 27;
+            const bodyWidth = 34;
+            const bodyHeight = 33;
             ctx.save();
             ctx.scale(-1, 1);
             ctx.drawImage(bodyImg, -bodyWidth / 2, -17, bodyWidth, bodyHeight);
@@ -2115,10 +2115,10 @@ class Character {
 
         const headImg = getHeadImage(cosmetics.head);
         if (headImg && headImg.complete && headImg.naturalWidth > 0) {
-            const headSize = 32;
+            const headSize = 38;
             ctx.save();
             ctx.scale(-1, 1);
-            ctx.drawImage(headImg, -headSize / 2, -34, headSize, headSize);
+            ctx.drawImage(headImg, -headSize / 2, -40, headSize, headSize);
             ctx.restore();
         } else {
             ctx.fillStyle = '#f1c40f';
