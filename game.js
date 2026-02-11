@@ -77,6 +77,20 @@ class SpatialGrid {
         }
         return results;
     }
+
+    forEachRadius(pos, radius, cb) {
+        const minCx = Math.floor((pos.x - radius) / this.cellSize);
+        const maxCx = Math.floor((pos.x + radius) / this.cellSize);
+        const minCy = Math.floor((pos.y - radius) / this.cellSize);
+        const maxCy = Math.floor((pos.y + radius) / this.cellSize);
+        for (let cy = minCy; cy <= maxCy; cy++) {
+            for (let cx = minCx; cx <= maxCx; cx++) {
+                const bucket = this.cells.get(`${cx},${cy}`);
+                if (!bucket) continue;
+                for (let i = 0; i < bucket.length; i++) cb(bucket[i]);
+            }
+        }
+    }
 }
 
 
@@ -542,14 +556,12 @@ class Fire {
             game.particleSystem.emit(this.pos.clone(), pVel, 20 + Math.random()*20, colors[Math.floor(Math.random()*colors.length)], 'fire');
         }
         if (this.life % 30 === 0) {
-            const nearbyEntities = game.getNearbyEntities(this.pos, 20);
-            for (let i = 0; i < nearbyEntities.length; i++) {
-                const e = nearbyEntities[i];
+            game.forEachNearbyEntity(this.pos, 20, (e) => {
                 if (!e.dead && e.pos.dist(this.pos) < 20) {
                     e.takeDamage(5, null, game, 'fire'); 
                     game.particleSystem.emit(e.pos.clone(), new Vector2(0,-1), 10, '#fff', 'spark');
                 }
-            }
+            });
         }
         return this.life > 0;
     }
@@ -571,9 +583,7 @@ class BlackHoleEffect {
     }
     update(game) {
         this.life--; this.angle += 0.2;
-        const nearbyEntities = game.getNearbyEntities(this.pos, 400);
-        for (let i = 0; i < nearbyEntities.length; i++) {
-            const e = nearbyEntities[i];
+        game.forEachNearbyEntity(this.pos, 400, (e) => {
             if (!e.dead) {
                 const distSquared = distSq(this.pos, e.pos);
                 if (distSquared < 400 * 400) {
@@ -583,7 +593,7 @@ class BlackHoleEffect {
                     e.vel = e.vel.add(pull);
                 }
             }
-        }
+        });
         game.crates.forEach(c => {
             if (distSq(this.pos, c.pos) < 400 * 400) {
                 c.pos = c.pos.add(this.pos.sub(c.pos).normalize().mult(5));
@@ -1023,6 +1033,7 @@ class Terrain {
 
     flushCollisionUpdates() {
         if (this.dirtyCollisionRegions.length === 0) return;
+        const dirtyCount = this.dirtyCollisionRegions.length;
         let minX = this.width;
         let minY = this.height;
         let maxX = 0;
@@ -1040,7 +1051,6 @@ class Terrain {
         const height = Math.max(0, maxY - minY);
         if (width === 0 || height === 0) return;
 
-        const dirtyCount = this.dirtyCollisionRegions.length;
         const dirtyArea = width * height;
         const totalArea = this.width * this.height;
         if (dirtyCount > 120 || dirtyArea > totalArea * 0.35) {
@@ -1135,14 +1145,9 @@ class Terrain {
                 const sSize = (Math.random() * baseSize + 2); 
                 const shade = 40 + Math.random() * 40; 
                 this.ctx.fillStyle = `rgba(${shade}, ${shade}, ${shade}, ${0.7 + Math.random()*0.3})`; 
-                
-                this.ctx.save(); 
-                this.ctx.translate(x + Math.cos(angle)*dist, y + Math.sin(angle)*dist); 
-                this.ctx.rotate(Math.random() * Math.PI * 2);
-                this.ctx.beginPath(); 
-                this.ctx.rect(-sSize/2, -sSize/2, sSize, sSize * (0.5 + Math.random())); 
-                this.ctx.fill(); 
-                this.ctx.restore();
+                const px = x + Math.cos(angle) * dist;
+                const py = y + Math.sin(angle) * dist;
+                this.ctx.fillRect(px - sSize * 0.5, py - sSize * 0.5, sSize, sSize * (0.5 + Math.random()));
             }
             this.ctx.restore(); // Remove Mask
         }
@@ -2756,6 +2761,15 @@ class Game {
         return this.entityGrid.queryRadius(pos, radius);
     }
 
+    forEachNearbyEntity(pos, radius, cb) {
+        if (!this.entityGrid) {
+            const list = this.aliveEntities;
+            for (let i = 0; i < list.length; i++) cb(list[i]);
+            return;
+        }
+        this.entityGrid.forEachRadius(pos, radius, cb);
+    }
+
     getEntityById(id) {
         return this.entityById.get(id) || null;
     }
@@ -2942,7 +2956,14 @@ class Game {
         }
         
         const aiStride = Math.max(1, Math.floor(this.aliveEntities.length / 12));
-        this.entities.forEach(ent => {
+        const farBotUpdateStride = this.aliveEntities.length > 24 ? 2 : 1;
+        const farBotDistSq = 1400 * 1400;
+        for (let i = 0; i < this.entities.length; i++) {
+            const ent = this.entities[i];
+            const isFarBotFromPlayer = this.player && ent instanceof Bot && distSq(ent.pos, this.player.pos) > farBotDistSq;
+            if (isFarBotFromPlayer && farBotUpdateStride > 1 && (this.tick + ent.id) % farBotUpdateStride !== 0) {
+                continue;
+            }
             if (ent instanceof Bot) {
                 const enemies = CONFIG.GAME_MODE === 'DM'
                     ? this.enemyCacheDm
@@ -2954,19 +2975,35 @@ class Game {
                 }
             }
             ent.update(this.terrain, this.projectiles, this.crates, this);
-        });
+        }
         
         this.crates.forEach(c => c.update(this.terrain));
         this.flags.forEach(f => f.update(this.terrain, this.entities, this));
         for (let i = this.projectiles.length - 1; i >= 0; i--) { 
             let p = this.projectiles[i]; p.update(this.terrain, this.particleSystem, this.aliveEntities, this); 
-            if (!p.active) this.projectiles.splice(i, 1); 
+            if (!p.active) {
+                const lastIdx = this.projectiles.length - 1;
+                this.projectiles[i] = this.projectiles[lastIdx];
+                this.projectiles.pop();
+            }
         }
         if (this.tick % CONFIG.COLLISION_BATCH_TICKS === 0) {
             this.terrain.flushCollisionUpdates();
         }
-        this.fires = this.fires.filter(f => f.update(this));
-        this.effects = this.effects.filter(f => f.update(this));
+        for (let i = this.fires.length - 1; i >= 0; i--) {
+            if (!this.fires[i].update(this)) {
+                const lastIdx = this.fires.length - 1;
+                this.fires[i] = this.fires[lastIdx];
+                this.fires.pop();
+            }
+        }
+        for (let i = this.effects.length - 1; i >= 0; i--) {
+            if (!this.effects[i].update(this)) {
+                const lastIdx = this.effects.length - 1;
+                this.effects[i] = this.effects[lastIdx];
+                this.effects.pop();
+            }
+        }
         this.blackHoles.length = 0;
         for (let i = 0; i < this.effects.length; i++) {
             const effect = this.effects[i];
