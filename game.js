@@ -2064,9 +2064,9 @@ class Character {
         if (CONFIG.GAME_MODE !== 'DM' && this.team !== 0) {
             nameColor = TEAMS[this.team]?.color || 'white';
         }
-        ctx.fillStyle = nameColor; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.fillText(this.name, 0, -38);
-        ctx.fillStyle = '#333'; ctx.fillRect(-15, -35, 30, 4);
-        ctx.fillStyle = this.hp > 50 ? '#2ecc71' : '#e74c3c'; ctx.fillRect(-15, -35, 30 * (this.hp / 100), 4);
+        ctx.fillStyle = nameColor; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.fillText(this.name, 0, -50);
+        ctx.fillStyle = '#333'; ctx.fillRect(-15, -46, 30, 4);
+        ctx.fillStyle = this.hp > 50 ? '#2ecc71' : '#e74c3c'; ctx.fillRect(-15, -46, 30 * (this.hp / 100), 4);
 
         const detailScale = 1.2;
         if (!aimFacingRight) ctx.scale(-detailScale, detailScale);
@@ -2075,25 +2075,27 @@ class Character {
         const walkCycle = isMoving ? Math.sin(this.animTimer * 2) * 4 : 0;
         const breathe = Math.sin(this.animTimer * 0.5);
 
-        const bootsImg = getBootsImage();
-        if (bootsImg && bootsImg.complete && bootsImg.naturalWidth > 0) {
-            const bootW = 12;
-            const bootH = 14;
-            const leftX = -9 + walkCycle;
-            const rightX = 1 - walkCycle;
-            const footY = 7;
+        const drawBoots = () => {
+            const bootsImg = getBootsImage();
+            if (bootsImg && bootsImg.complete && bootsImg.naturalWidth > 0) {
+                const bootW = 12;
+                const bootH = 14;
+                const leftX = -9 + walkCycle;
+                const rightX = 1 - walkCycle;
+                const footY = 10;
 
-            // По умолчанию отражаем ботинок по горизонтали
-            ctx.save();
-            ctx.scale(-1, 1);
-            ctx.drawImage(bootsImg, -leftX - bootW, footY, bootW, bootH);
-            ctx.drawImage(bootsImg, -rightX - bootW, footY, bootW, bootH);
-            ctx.restore();
-        } else {
-            ctx.fillStyle = '#34495e';
-            ctx.beginPath(); ctx.ellipse(-2.5 + walkCycle, 12, 4, 5, 0, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.ellipse(2.5 - walkCycle, 12, 4, 5, 0, 0, Math.PI*2); ctx.fill();
-        }
+                // По умолчанию отражаем ботинок по горизонтали
+                ctx.save();
+                ctx.scale(-1, 1);
+                ctx.drawImage(bootsImg, -leftX - bootW, footY, bootW, bootH);
+                ctx.drawImage(bootsImg, -rightX - bootW, footY, bootW, bootH);
+                ctx.restore();
+            } else {
+                ctx.fillStyle = '#34495e';
+                ctx.beginPath(); ctx.ellipse(-2.5 + walkCycle, 13, 4, 5, 0, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(2.5 - walkCycle, 13, 4, 5, 0, 0, Math.PI*2); ctx.fill();
+            }
+        };
 
         ctx.translate(0, breathe);
         const cosmetics = this.cosmetics || defaultCosmetics();
@@ -2112,6 +2114,9 @@ class Character {
             ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(-6, -8, 12, 14);
             ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(-7, -9, 5, 7);
         }
+
+        // Рисуем обувь после туловища, чтобы ботинки не скрывались
+        drawBoots();
 
         const headImg = getHeadImage(cosmetics.head);
         if (headImg && headImg.complete && headImg.naturalWidth > 0) {
@@ -2144,7 +2149,7 @@ class Character {
             let c = Math.floor((this.charge/CONFIG.MAX_CHARGE)*255);
             ctx.fillStyle = `rgb(255, ${255-c}, 0)`;
             let w = 30 * (this.charge/CONFIG.MAX_CHARGE);
-            ctx.fillRect(-15, -25, w, 3);
+            ctx.fillRect(-15, -34, w, 3);
         }
         ctx.restore();
     }
