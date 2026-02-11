@@ -181,6 +181,22 @@ function getBodyImage(bodyId) {
     return bodyImageCache.get(bodyId);
 }
 
+let bootsImage = null;
+function getBootsImage() {
+    if (!bootsImage) {
+        const img = new Image();
+        img.onerror = () => {
+            if (!img._triedLowerCase) {
+                img._triedLowerCase = true;
+                img.src = 'assets/images/boots/boot.png';
+            }
+        };
+        img.src = 'Assets/Images/Boots/boot.png';
+        bootsImage = img;
+    }
+    return bootsImage;
+}
+
 function defaultCosmetics() {
     return {
         head: '1',
@@ -2021,9 +2037,25 @@ class Character {
         const walkCycle = isMoving ? Math.sin(this.animTimer * 2) * 4 : 0;
         const breathe = Math.sin(this.animTimer * 0.5);
 
-        ctx.fillStyle = '#34495e';
-        ctx.beginPath(); ctx.ellipse(-2.5 + walkCycle, 12, 4, 5, 0, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(2.5 - walkCycle, 12, 4, 5, 0, 0, Math.PI*2); ctx.fill();
+        const bootsImg = getBootsImage();
+        if (bootsImg && bootsImg.complete && bootsImg.naturalWidth > 0) {
+            const bootW = 10;
+            const bootH = 11;
+            const leftX = -7 + walkCycle;
+            const rightX = 1 - walkCycle;
+            const footY = 6;
+
+            // По умолчанию отражаем ботинок по горизонтали
+            ctx.save();
+            ctx.scale(-1, 1);
+            ctx.drawImage(bootsImg, -leftX - bootW, footY, bootW, bootH);
+            ctx.drawImage(bootsImg, -rightX - bootW, footY, bootW, bootH);
+            ctx.restore();
+        } else {
+            ctx.fillStyle = '#34495e';
+            ctx.beginPath(); ctx.ellipse(-2.5 + walkCycle, 12, 4, 5, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(2.5 - walkCycle, 12, 4, 5, 0, 0, Math.PI*2); ctx.fill();
+        }
 
         ctx.translate(0, breathe);
         const cosmetics = this.cosmetics || defaultCosmetics();
