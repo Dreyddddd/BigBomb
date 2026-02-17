@@ -1098,32 +1098,6 @@ class Terrain {
     clipToDestructible() {
         if (!this.destructibleClipPath) this.buildDestructibleClipPath();
         this.ctx.clip(this.destructibleClipPath);
-        return;
-
-        const baseW = 500;
-        const baseH = this.height - 400;
-        const slopeWidth = 600; 
-        
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, 0); // TL
-        this.ctx.lineTo(this.width, 0); // TR
-        
-        // Custom clipping shape based on mode
-        if (CONFIG.GAME_MODE !== 'DM') {
-            this.ctx.lineTo(this.width, baseH); // Right Base Top
-            this.ctx.lineTo(this.width - baseW, baseH); // Right Base Inner
-            this.ctx.lineTo(this.width - baseW - slopeWidth, this.height - 100); // Right Slope Base
-            this.ctx.lineTo(baseW + slopeWidth, this.height - 100); // Bottom Flat (Above Bedrock)
-            this.ctx.lineTo(baseW, baseH); // Left Slope Base
-            this.ctx.lineTo(0, baseH); // Left Base Top
-        } else {
-            // For DM, everything is destructible to bottom
-            this.ctx.lineTo(this.width, this.height);
-            this.ctx.lineTo(0, this.height);
-        }
-        
-        this.ctx.lineTo(0, 0); // Close
-        this.ctx.clip();
     }
 
     destroy(x, y, radius, type = null) {
@@ -1279,16 +1253,14 @@ class Projectile {
         let hitWall = shouldRaycast ? terrain.raycast(this.pos, nextPos) : false;
         const segmentMid = this.pos.add(nextPos).mult(0.5);
         const segmentRadius = Math.max(60, this.pos.dist(nextPos) / 2 + 30);
-        const candidates = game.getNearbyEntities(segmentMid, segmentRadius);
         const shouldCheckEntities = !(this.type.type === 'blaster' || this.type.type === 'rapid') || (game.tick + this.ownerId) % 2 === 0;
         
         if (shouldCheckEntities) {
-            for (let i = 0; i < candidates.length; i++) {
-                const ent = candidates[i];
-                if (ent.dead) continue;
-                if (ent.id === this.ownerId && this.ownerCollisionGrace > 0) continue;
-                if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team) continue;
-                if (this.piercedTargets.has(ent.id)) continue;
+            game.forEachNearbyEntity(segmentMid, segmentRadius, (ent) => {
+                if (ent.dead) return;
+                if (ent.id === this.ownerId && this.ownerCollisionGrace > 0) return;
+                if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team) return;
+                if (this.piercedTargets.has(ent.id)) return;
                 
                 // Check distance from entity center to the movement segment
                 let collisionCenter = ent.pos;
@@ -1308,7 +1280,7 @@ class Projectile {
                          hitEntity = ent;
                      }
                 }
-            }
+            });
         }
 
         if (hitEntity && !hitWall) {
@@ -1472,11 +1444,9 @@ class Projectile {
         const dmgRadius = effectiveRadius + 20;
         const dmgRadiusSq = dmgRadius * dmgRadius;
         let attacker = owner;
-        const candidates = game.getNearbyEntities(this.pos, dmgRadius);
-        for (let i = 0; i < candidates.length; i++) {
-            const ent = candidates[i];
-            if (ent.dead) continue;
-            if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team && ent.id !== this.ownerId) continue;
+        game.forEachNearbyEntity(this.pos, dmgRadius, (ent) => {
+            if (ent.dead) return;
+            if (CONFIG.GAME_MODE !== 'DM' && ent.team !== 0 && ent.team === this.team && ent.id !== this.ownerId) return;
             const dSq = distSq(this.pos, ent.pos);
             if (dSq < dmgRadiusSq) {
                 const d = Math.sqrt(dSq);
@@ -1498,7 +1468,7 @@ class Projectile {
                 if (attacker && attacker.perkModifiers && this.type.type === 'bounce') pushPower *= attacker.perkModifiers.grenadePush;
                 ent.vel = ent.vel.add(pushDir.mult(pushPower)); 
             }
-        }
+        });
 
         if (attacker && attacker.perkModifiers && attacker.perkModifiers.pyrokinesis && Math.random() < 0.5 && this.type.type !== 'fire_droplet') {
             game.fires.push(new Fire(this.pos.clone(), 140));
@@ -2977,10 +2947,17 @@ class Game {
             ent.update(this.terrain, this.projectiles, this.crates, this);
         }
         
-        this.crates.forEach(c => c.update(this.terrain));
-        this.flags.forEach(f => f.update(this.terrain, this.entities, this));
+        for (let i = 0; i < this.crates.length; i++) this.crates[i].update(this.terrain);
+        for (let i = 0; i < this.flags.length; i++) this.flags[i].update(this.terrain, this.entities, this);
+        const projectileFarStride = this.projectiles.length > 180 ? 2 : 1;
+        const projectileFarDistSq = 1700 * 1700;
         for (let i = this.projectiles.length - 1; i >= 0; i--) { 
-            let p = this.projectiles[i]; p.update(this.terrain, this.particleSystem, this.aliveEntities, this); 
+            let p = this.projectiles[i];
+            const isNearPlayerProjectile = this.player && distSq(p.pos, this.player.pos) < projectileFarDistSq;
+            if (projectileFarStride > 1 && !isNearPlayerProjectile && ((this.tick + i) % projectileFarStride !== 0)) {
+                continue;
+            }
+            p.update(this.terrain, this.particleSystem, this.aliveEntities, this); 
             if (!p.active) {
                 const lastIdx = this.projectiles.length - 1;
                 this.projectiles[i] = this.projectiles[lastIdx];
