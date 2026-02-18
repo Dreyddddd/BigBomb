@@ -2228,17 +2228,17 @@ class Character {
             ctx.restore();
         };
 
-        const frontShoulderX = 1;
-        const frontElbowX = frontShoulderX + Math.cos(angle) * 7.5;
-        const frontElbowY = shoulderY + Math.sin(angle) * 7.5;
-        const frontHandX = frontShoulderX + Math.cos(angle) * 13;
-        const frontHandY = shoulderY + Math.sin(angle) * 13;
+        const frontShoulderX = -1;
+        const frontElbowX = frontShoulderX + Math.cos(angle) * 8.2;
+        const frontElbowY = shoulderY + 1.2 + Math.sin(angle) * 8.2;
+        const frontHandX = frontShoulderX + Math.cos(angle) * 14.5 - Math.sin(angle) * 0.8;
+        const frontHandY = shoulderY + 2.0 + Math.sin(angle) * 14.5 + Math.cos(angle) * 0.8;
 
-        const supportShoulderX = -2;
-        const supportElbowX = supportShoulderX + Math.cos(angle) * 7.2 - Math.sin(angle) * 1.8;
-        const supportElbowY = shoulderY + 2 + Math.sin(angle) * 7.2 + Math.cos(angle) * 1.8;
-        const supportHandX = frontHandX + Math.cos(angle) * 8 - Math.sin(angle) * 2.2;
-        const supportHandY = frontHandY + Math.sin(angle) * 8 + Math.cos(angle) * 2.2;
+        const supportShoulderX = -4;
+        const supportElbowX = supportShoulderX + Math.cos(angle) * 7.8 - Math.sin(angle) * 2.4;
+        const supportElbowY = shoulderY + 4 + Math.sin(angle) * 7.8 + Math.cos(angle) * 2.4;
+        const supportHandX = frontHandX + Math.cos(angle) * 7.2 - Math.sin(angle) * 3.0;
+        const supportHandY = frontHandY + 1.2 + Math.sin(angle) * 7.2 + Math.cos(angle) * 3.0;
 
         // Back/support arm under weapon
         drawArmSegment(supportShoulderX, shoulderY + 2, supportElbowX, supportElbowY, 5.8, '#a97052', '#5a3d2d');
@@ -2247,17 +2247,17 @@ class Character {
 
         // Weapon sprite in hand (larger and aligned with grip)
         ctx.save();
-        const weaponPivotX = frontHandX - 1.5;
-        const weaponPivotY = frontHandY - 0.5;
+        const weaponPivotX = frontHandX - 3.8;
+        const weaponPivotY = frontHandY + 1.6;
         ctx.translate(weaponPivotX, weaponPivotY);
         ctx.rotate(angle);
         const weaponImg = getWeaponImage(this.weapon.type);
         if (weaponImg && weaponImg.complete && weaponImg.naturalWidth > 0) {
-            const weaponW = 42;
-            const weaponH = 16;
+            const weaponW = 52;
+            const weaponH = 20;
             ctx.save();
             ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(weaponImg, -5, -weaponH * 0.5, weaponW, weaponH);
+            ctx.drawImage(weaponImg, -8, -weaponH * 0.5, weaponW, weaponH);
             ctx.restore();
         } else {
             ctx.fillStyle = this.weapon.color;
