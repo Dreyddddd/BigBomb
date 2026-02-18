@@ -1058,15 +1058,19 @@ class Terrain {
             return;
         }
 
-        const regionData = this.ctx.getImageData(minX, minY, width, height).data;
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                const srcIndex = (y * width + x) * 4;
-                const destIndex = ((minY + y) * this.width + (minX + x)) * 4;
-                this.collisionData[destIndex] = regionData[srcIndex];
-                this.collisionData[destIndex + 1] = regionData[srcIndex + 1];
-                this.collisionData[destIndex + 2] = regionData[srcIndex + 2];
-                this.collisionData[destIndex + 3] = regionData[srcIndex + 3];
+        const TILE_SIZE = 256;
+        for (let ty = minY; ty < maxY; ty += TILE_SIZE) {
+            const tileH = Math.min(TILE_SIZE, maxY - ty);
+            for (let tx = minX; tx < maxX; tx += TILE_SIZE) {
+                const tileW = Math.min(TILE_SIZE, maxX - tx);
+                if (tileW <= 0 || tileH <= 0) continue;
+
+                const regionData = this.ctx.getImageData(tx, ty, tileW, tileH).data;
+                for (let y = 0; y < tileH; y++) {
+                    const srcRow = y * tileW * 4;
+                    const destRow = ((ty + y) * this.width + tx) * 4;
+                    this.collisionData.set(regionData.subarray(srcRow, srcRow + tileW * 4), destRow);
+                }
             }
         }
     }
@@ -1149,10 +1153,23 @@ class Terrain {
     }
     
     raycast(start, end) {
-        let dir = end.sub(start); let dist = dir.mag(); dir = dir.normalize(); let pos = start.clone();
-        for(let i=0; i<dist; i+=15) {
-            pos = pos.add(dir.mult(15));
-            if (this.isSolid(pos.x, pos.y)) return true;
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= 0.0001) return this.isSolid(start.x, start.y);
+
+        const stepSize = 15;
+        const invDist = 1 / dist;
+        const stepX = dx * invDist * stepSize;
+        const stepY = dy * invDist * stepSize;
+        const steps = Math.ceil(dist / stepSize);
+
+        let x = start.x;
+        let y = start.y;
+        for (let i = 0; i < steps; i++) {
+            x += stepX;
+            y += stepY;
+            if (this.isSolid(x, y)) return true;
         }
         return false;
     }
@@ -1836,32 +1853,38 @@ class Character {
              game.checkWinCondition();
         }
 
-        game.effects.forEach(e => {
-            if(e instanceof BlackHoleEffect && this.pos.dist(e.pos) < 400) {
-                let pull = e.pos.sub(this.pos).normalize().mult((200/(this.pos.dist(e.pos)+10))*0.05 * this.perkModifiers.blackholePull);
-                this.vel = this.vel.add(pull);
-            }
-        });
+        const blackHoleRadiusSq = 400 * 400;
+        for (let i = 0; i < game.effects.length; i++) {
+            const e = game.effects[i];
+            if (!(e instanceof BlackHoleEffect)) continue;
+            const dSq = distSq(this.pos, e.pos);
+            if (dSq >= blackHoleRadiusSq) continue;
+            const dist = Math.sqrt(dSq);
+            const dir = e.pos.sub(this.pos).normalize();
+            const force = (200 / (dist + 10)) * 0.05 * this.perkModifiers.blackholePull;
+            this.vel = this.vel.add(dir.mult(force));
+        }
 
-        crates.forEach(c => {
-            if (c.active && this.pos.dist(c.pos) < 25) {
-                if (c.isMedkit) this.hp = Math.min(this.getMaxHp(), this.hp + 40 * (this.hasPerk('tenacity') ? 1.15 : 1));
-                else if (c.crateType === 'powerup') this.applyBuff(c.content);
-                else if (c.content) { 
-                        if (!this.inventory.find(w => w.name === c.content.name)) {
-                            if (this.inventory.length < CONFIG.MAX_INVENTORY) {
-                                this.inventory.push({...c.content});
-                                this.switchWeapon(this.inventory.length - 1);
-                            } else {
-                                this.inventory[this.weaponIndex] = {...c.content};
-                                this.weapon = this.inventory[this.weaponIndex];
-                            }
-                            if(this === game.player) game.updateInventoryUI();
-                        }
+        const cratePickupRadiusSq = 25 * 25;
+        for (let i = 0; i < crates.length; i++) {
+            const c = crates[i];
+            if (!c.active || distSq(this.pos, c.pos) >= cratePickupRadiusSq) continue;
+            if (c.isMedkit) this.hp = Math.min(this.getMaxHp(), this.hp + 40 * (this.hasPerk('tenacity') ? 1.15 : 1));
+            else if (c.crateType === 'powerup') this.applyBuff(c.content);
+            else if (c.content) {
+                if (!this.inventory.find(w => w.name === c.content.name)) {
+                    if (this.inventory.length < CONFIG.MAX_INVENTORY) {
+                        this.inventory.push({...c.content});
+                        this.switchWeapon(this.inventory.length - 1);
+                    } else {
+                        this.inventory[this.weaponIndex] = {...c.content};
+                        this.weapon = this.inventory[this.weaponIndex];
+                    }
+                    if(this === game.player) game.updateInventoryUI();
                 }
-                c.active = false;
             }
-        });
+            c.active = false;
+        }
 
         let targetSpeed = 0;
         let maxSpeed = CONFIG.MAX_SPEED * this.speedMultiplier * this.perkModifiers.speed;
@@ -2205,15 +2228,15 @@ class Bot extends Character {
         }
         this.input.aimTarget = aimPoint;
 
-        let dist = Math.sqrt(distSq(this.pos, targetPos));
+        let distSqToTarget = distSq(this.pos, targetPos);
         
         // Movement Logic
         // If enemy is too close, maybe move AWAY?
-        if (closeEnemy && dist < 150) {
+        if (closeEnemy && distSqToTarget < 150 * 150) {
              // Retreat logic: Move away from enemy
              if (targetPos.x > this.pos.x) { this.input.right = false; this.input.left = true; } // Enemy right, go left
              else { this.input.right = true; this.input.left = false; } // Enemy left, go right
-        } else if (dist > 50) {
+        } else if (distSqToTarget > 50 * 50) {
             if (targetPos.x > this.pos.x + 20) { this.input.right = true; this.input.left = false; }
             else if (targetPos.x < this.pos.x - 20) { this.input.right = false; this.input.left = true; }
             else { this.input.right = false; this.input.left = false; }
@@ -2263,14 +2286,14 @@ class Bot extends Character {
         
         // Combat Logic
         if (this.currentTarget instanceof Character && !this.currentTarget.dead) {
-            let enemyDist = Math.sqrt(distSq(this.pos, this.currentTarget.pos));
+            let enemyDistSq = distSq(this.pos, this.currentTarget.pos);
             // Don't shoot self if wall is close unless stuck
             let wallFace = terrain.isSolid(this.pos.x + (this.facingRight?20:-20), this.pos.y);
             
-            if (enemyDist < 700 && (!wallFace || this.stuckTimer > 30)) {
+            if (enemyDistSq < 700 * 700 && (!wallFace || this.stuckTimer > 30)) {
                  this.input.shoot = true;
                  // Add inaccuracy based on distance
-                 let jitter = (enemyDist / 100) * 5;
+                 let jitter = (Math.sqrt(enemyDistSq) / 100) * 5;
                  this.input.aimTarget = this.currentTarget.pos.add(new Vector2((Math.random()-0.5)*jitter, (Math.random()-0.5)*jitter)); 
             } else {
                  this.input.shoot = false;
@@ -2314,7 +2337,7 @@ class Bot extends Character {
                  }
              }
              // Only go if it's reasonably close (don't cross entire map just for loot if fighting)
-             if (nearestCrate && Math.sqrt(nearestCrateDist) < 800) {
+             if (nearestCrate && nearestCrateDist < 800 * 800) {
                  this.currentTarget = { pos: nearestCrate.pos, isStatic: true };
                  return;
              }
@@ -2378,7 +2401,7 @@ class Bot extends Character {
                      this.currentTarget = nearestEnemy;
                  } else {
                      // Roam
-                     if (!this.roamSpot || Math.sqrt(distSq(this.pos, this.roamSpot)) < 100 || this.decisionTimer < -200) {
+                     if (!this.roamSpot || distSq(this.pos, this.roamSpot) < 100 * 100 || this.decisionTimer < -200) {
                          this.roamSpot = new Vector2(Math.random()*CONFIG.WORLD_WIDTH, Math.random() * (CONFIG.WORLD_HEIGHT - 300));
                          this.decisionTimer = 300;
                      }
@@ -2397,6 +2420,7 @@ class Game {
         this.cameraTarget = null;
         this.statsVisible = false;
         this.statsDirty = true;
+        this.lastStatsRenderTick = -9999;
         this.input = { keys: {}, mouse: { screenPos: new Vector2(CONFIG.VIEWPORT_WIDTH/2, CONFIG.VIEWPORT_HEIGHT/2), worldPos: new Vector2(0,0), down: false } };
         this.aliveEntities = [];
         this.activeCrates = [];
@@ -2468,7 +2492,8 @@ class Game {
         }
         this.resize();
 
-        requestAnimationFrame((t) => this.loop(t));
+        this.loop = this.loop.bind(this);
+        requestAnimationFrame(this.loop);
     }
 
     resize() {
@@ -2716,13 +2741,13 @@ class Game {
         const timer = this.dom.ctfRespawnTimer;
         if (!timer) return;
         if (CONFIG.GAME_MODE === 'CTF' && this.player && this.player.dead) {
-             timer.style.display = 'block';
+             if (timer.style.display !== 'block') timer.style.display = 'block';
              const respawnVal = this.dom.respawnTimeVal;
              if (respawnVal) {
                  respawnVal.innerText = Math.ceil(this.player.respawnTimer / 60);
              }
         } else {
-             timer.style.display = 'none';
+             if (timer.style.display !== 'none') timer.style.display = 'none';
         }
     }
 
@@ -2844,7 +2869,7 @@ class Game {
         } catch (err) {
             console.error('Game loop error:', err);
         } finally {
-            requestAnimationFrame(() => this.loop());
+            requestAnimationFrame(this.loop);
         }
     }
 
@@ -3011,7 +3036,8 @@ class Game {
             }
         }
         
-        if (this.statsVisible && (this.statsDirty || this.tick % 20 === 0)) {
+        const STATS_RENDER_INTERVAL = 30;
+        if (this.statsVisible && (this.statsDirty || this.tick - this.lastStatsRenderTick >= STATS_RENDER_INTERVAL)) {
             let html = '';
             const sortedEntities = [...this.entities].sort((a,b)=>b.kills-a.kills);
             sortedEntities.forEach(e => {
@@ -3022,6 +3048,7 @@ class Game {
             const statsBody = this.dom.statsBody;
             if (statsBody) statsBody.innerHTML = html;
             this.statsDirty = false;
+            this.lastStatsRenderTick = this.tick;
         }
         const hpDisplay = this.dom.hpDisplay;
         if (hpDisplay && this.player) {
