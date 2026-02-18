@@ -530,7 +530,9 @@ class BackgroundGenerator {
         });
     }
     draw(ctx, camera) {
-        this.layers.forEach(layer => {
+        const cameraRight = camera.x + CONFIG.VIEWPORT_WIDTH;
+        for (let i = 0; i < this.layers.length; i++) {
+            const layer = this.layers[i];
             let px = camera.x * layer.speedX;
             let py = camera.y * layer.speedY;
             let w = layer.canvas.width;
@@ -539,10 +541,10 @@ class BackgroundGenerator {
             ctx.save();
             ctx.globalAlpha = layer.alpha;
             ctx.drawImage(layer.canvas, startX, py);
-            if (startX + w < camera.x + CONFIG.VIEWPORT_WIDTH) ctx.drawImage(layer.canvas, startX + w, py);
-            if (startX + w * 2 < camera.x + CONFIG.VIEWPORT_WIDTH) ctx.drawImage(layer.canvas, startX + w * 2, py);
+            if (startX + w < cameraRight) ctx.drawImage(layer.canvas, startX + w, py);
+            if (startX + w * 2 < cameraRight) ctx.drawImage(layer.canvas, startX + w * 2, py);
             ctx.restore();
-        });
+        }
     }
 }
 
@@ -556,8 +558,9 @@ class Fire {
             game.particleSystem.emit(this.pos.clone(), pVel, 20 + Math.random()*20, colors[Math.floor(Math.random()*colors.length)], 'fire');
         }
         if (this.life % 30 === 0) {
+            const fireDamageRadiusSq = 20 * 20;
             game.forEachNearbyEntity(this.pos, 20, (e) => {
-                if (!e.dead && e.pos.dist(this.pos) < 20) {
+                if (!e.dead && distSq(e.pos, this.pos) < fireDamageRadiusSq) {
                     e.takeDamage(5, null, game, 'fire'); 
                     game.particleSystem.emit(e.pos.clone(), new Vector2(0,-1), 10, '#fff', 'spark');
                 }
@@ -580,25 +583,35 @@ class BlackHoleEffect {
         this.radius = radius; 
         this.angle = 0; 
         this.ownerId = ownerId; 
+        this.isBlackHoleEffect = true;
     }
     update(game) {
         this.life--; this.angle += 0.2;
+        const pullRadiusSq = 400 * 400;
+        const originX = this.pos.x;
+        const originY = this.pos.y;
         game.forEachNearbyEntity(this.pos, 400, (e) => {
-            if (!e.dead) {
-                const distSquared = distSq(this.pos, e.pos);
-                if (distSquared < 400 * 400) {
-                    const dist = Math.sqrt(distSquared);
-                    let force = 150 / (dist + 10);
-                    let pull = this.pos.sub(e.pos).normalize().mult(force);
-                    e.vel = e.vel.add(pull);
-                }
-            }
+            if (e.dead) return;
+            const dx = originX - e.pos.x;
+            const dy = originY - e.pos.y;
+            const dSq = dx * dx + dy * dy;
+            if (dSq <= 0.0001 || dSq >= pullRadiusSq) return;
+            const dist = Math.sqrt(dSq);
+            const force = 150 / (dist + 10);
+            const invDist = 1 / dist;
+            e.vel.x += dx * invDist * force;
+            e.vel.y += dy * invDist * force;
         });
-        game.crates.forEach(c => {
-            if (distSq(this.pos, c.pos) < 400 * 400) {
-                c.pos = c.pos.add(this.pos.sub(c.pos).normalize().mult(5));
-            }
-        });
+        for (let i = 0; i < game.crates.length; i++) {
+            const c = game.crates[i];
+            const dx = originX - c.pos.x;
+            const dy = originY - c.pos.y;
+            const dSq = dx * dx + dy * dy;
+            if (dSq <= 0.0001 || dSq >= pullRadiusSq) continue;
+            const invDist = 1 / Math.sqrt(dSq);
+            c.pos.x += dx * invDist * 5;
+            c.pos.y += dy * invDist * 5;
+        }
         if (game.particleSystem.activeCount < CONFIG.MAX_PARTICLES) {
             for(let i=0; i<2; i++) {
                 let a = Math.random() * Math.PI * 2;
@@ -613,9 +626,10 @@ class BlackHoleEffect {
             game.terrain.destroy(this.pos.x, this.pos.y, this.radius);
             game.shakeScreen(20); game.flashScreen();
             const blastEntities = game.getNearbyEntities(this.pos, this.radius);
+            const blastRadiusSq = this.radius * this.radius;
             for (let i = 0; i < blastEntities.length; i++) {
                 const ent = blastEntities[i];
-                if (this.pos.dist(ent.pos) < this.radius) ent.takeDamage(999, this.ownerId, game, 'blackhole'); 
+                if (distSq(this.pos, ent.pos) < blastRadiusSq) ent.takeDamage(999, this.ownerId, game, 'blackhole'); 
             }
         }
         return this.life > 0;
@@ -756,21 +770,27 @@ class Flag {
             if (this.carrier.dead) {
                 this.drop();
             } else {
-                this.pos = this.carrier.pos.clone().add(new Vector2(0, -30));
+                this.pos.x = this.carrier.pos.x;
+                this.pos.y = this.carrier.pos.y - 30;
                 
                 // -- CAPTURE LOGIC --
                 // If I am being carried, and my carrier is in THEIR base zone, they score.
-                const baseZoneRadius = 150;
-                let carrierTeamBasePos = null;
-                if (this.carrier.team === 1) carrierTeamBasePos = new Vector2(250, terrain.height - 400); // Blue Base
-                else if (this.carrier.team === 2) carrierTeamBasePos = new Vector2(game.terrain.width - 250, terrain.height - 400); // Red Base
+                const baseZoneRadiusSq = 150 * 150;
+                let baseX = null;
+                let baseY = terrain.height - 400;
+                if (this.carrier.team === 1) baseX = 250; // Blue Base
+                else if (this.carrier.team === 2) baseX = game.terrain.width - 250; // Red Base
                 
-                if (carrierTeamBasePos && this.carrier.pos.dist(carrierTeamBasePos) < baseZoneRadius) {
-                    // Check if their flag is at home
-                    let carriersFlag = game.flags.find(f => f.teamId === this.carrier.team);
-                    if (carriersFlag && carriersFlag.state === 'at_base') {
-                        game.scoreCapture(this.carrier.team);
-                        this.returnToBase(game);
+                if (baseX !== null) {
+                    const dx = this.carrier.pos.x - baseX;
+                    const dy = this.carrier.pos.y - baseY;
+                    if (dx * dx + dy * dy < baseZoneRadiusSq) {
+                        // Check if their flag is at home
+                        let carriersFlag = game.flags.find(f => f.teamId === this.carrier.team);
+                        if (carriersFlag && carriersFlag.state === 'at_base') {
+                            game.scoreCapture(this.carrier.team);
+                            this.returnToBase(game);
+                        }
                     }
                 }
             }
@@ -780,19 +800,18 @@ class Flag {
             if (this.dropTimer <= 0) this.returnToBase(game);
         }
 
-        entities.forEach(ent => {
-            if (ent.dead) return;
-            if (this.pos.dist(ent.pos) < 30) {
-                if (ent.team !== 0 && ent.team !== this.teamId) {
-                    if (this.state !== 'carried') {
-                        this.pickup(ent, game);
-                    }
-                } 
-                else if (ent.team === this.teamId) {
-                    if (this.state === 'dropped') {
-                        this.returnToBase(game);
-                    } 
+        const pickupRadiusSq = 30 * 30;
+        game.forEachNearbyEntity(this.pos, 30, (ent) => {
+            if (ent.dead || distSq(this.pos, ent.pos) >= pickupRadiusSq) return;
+            if (ent.team !== 0 && ent.team !== this.teamId) {
+                if (this.state !== 'carried') {
+                    this.pickup(ent, game);
                 }
+            } 
+            else if (ent.team === this.teamId) {
+                if (this.state === 'dropped') {
+                    this.returnToBase(game);
+                } 
             }
         });
     }
@@ -1268,8 +1287,11 @@ class Projectile {
         
         // Check against terrain first to prevent shooting through walls
         let hitWall = shouldRaycast ? terrain.raycast(this.pos, nextPos) : false;
-        const segmentMid = this.pos.add(nextPos).mult(0.5);
-        const segmentRadius = Math.max(60, this.pos.dist(nextPos) / 2 + 30);
+        const segmentDx = nextPos.x - this.pos.x;
+        const segmentDy = nextPos.y - this.pos.y;
+        const segmentMid = new Vector2((this.pos.x + nextPos.x) * 0.5, (this.pos.y + nextPos.y) * 0.5);
+        const segmentLen = Math.sqrt(segmentDx * segmentDx + segmentDy * segmentDy);
+        const segmentRadius = Math.max(60, segmentLen * 0.5 + 30);
         const shouldCheckEntities = !(this.type.type === 'blaster' || this.type.type === 'rapid') || (game.tick + this.ownerId) % 2 === 0;
         
         if (shouldCheckEntities) {
@@ -1284,7 +1306,7 @@ class Projectile {
                 let hitRadius = this.type.type === 'laser' ? 10 : Math.max(ent.size.x * 0.5, ent.size.y * 0.5);
                 if (ent.colliderTop !== undefined && ent.colliderBottom !== undefined && ent.colliderHalfWidth !== undefined) {
                     const verticalShift = (ent.colliderTop - ent.colliderBottom) * 0.35;
-                    collisionCenter = ent.pos.add(new Vector2(0, -verticalShift));
+                    collisionCenter = { x: ent.pos.x, y: ent.pos.y - verticalShift };
                     hitRadius = Math.max(ent.colliderHalfWidth + 3, (ent.colliderTop + ent.colliderBottom) * 0.5);
                 }
                 let distToTrajectory = distToSegmentSquared(collisionCenter, this.pos, nextPos);
@@ -1856,7 +1878,7 @@ class Character {
         const blackHoleRadiusSq = 400 * 400;
         for (let i = 0; i < game.effects.length; i++) {
             const e = game.effects[i];
-            if (!(e instanceof BlackHoleEffect)) continue;
+            if (!e || !e.isBlackHoleEffect) continue;
             const dSq = distSq(this.pos, e.pos);
             if (dSq >= blackHoleRadiusSq) continue;
             const dist = Math.sqrt(dSq);
@@ -3009,7 +3031,7 @@ class Game {
         this.blackHoles.length = 0;
         for (let i = 0; i < this.effects.length; i++) {
             const effect = this.effects[i];
-            if (effect instanceof BlackHoleEffect) this.blackHoles.push(effect);
+            if (effect && effect.isBlackHoleEffect) this.blackHoles.push(effect);
         }
         
         // CAMERA LOGIC WITH MOUSE OFFSET
