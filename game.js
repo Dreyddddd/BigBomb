@@ -2174,7 +2174,7 @@ class Character {
         if (!this.facingRight) aimX = -aimX;
         let angle = Math.atan2(aimY, aimX);
 
-        const shoulderY = -18;
+        const shoulderY = -11;
         const handTone = '#f3c7a6';
         const armDark = '#b68261';
 
@@ -2228,43 +2228,47 @@ class Character {
             ctx.restore();
         };
 
-        const shoulderX = 3;
-        const elbowX = shoulderX + Math.cos(angle) * 8;
-        const elbowY = shoulderY + Math.sin(angle) * 8;
-        const handX = shoulderX + Math.cos(angle) * 15;
-        const handY = shoulderY + Math.sin(angle) * 15;
+        const frontShoulderX = 1;
+        const frontElbowX = frontShoulderX + Math.cos(angle) * 7.5;
+        const frontElbowY = shoulderY + Math.sin(angle) * 7.5;
+        const frontHandX = frontShoulderX + Math.cos(angle) * 13;
+        const frontHandY = shoulderY + Math.sin(angle) * 13;
 
-        // Back/support arm
-        drawArmSegment(-2, shoulderY + 2, elbowX - 4, elbowY + 1, 5.5, '#a97052', '#5a3d2d');
-        drawArmSegment(elbowX - 4, elbowY + 1, handX - 3, handY + 1, 5.2, '#be8968', '#5a3d2d');
-        drawDetailedHand(handX - 3, handY + 1, 0.95, true);
+        const supportShoulderX = -2;
+        const supportElbowX = supportShoulderX + Math.cos(angle) * 7.2 - Math.sin(angle) * 1.8;
+        const supportElbowY = shoulderY + 2 + Math.sin(angle) * 7.2 + Math.cos(angle) * 1.8;
+        const supportHandX = frontHandX + Math.cos(angle) * 8 - Math.sin(angle) * 2.2;
+        const supportHandY = frontHandY + Math.sin(angle) * 8 + Math.cos(angle) * 2.2;
 
-        // Weapon sprite in hand
+        // Back/support arm under weapon
+        drawArmSegment(supportShoulderX, shoulderY + 2, supportElbowX, supportElbowY, 5.8, '#a97052', '#5a3d2d');
+        drawArmSegment(supportElbowX, supportElbowY, supportHandX, supportHandY, 5.4, '#be8968', '#5a3d2d');
+        drawDetailedHand(supportHandX, supportHandY, 0.95, true);
+
+        // Weapon sprite in hand (larger and aligned with grip)
         ctx.save();
-        ctx.translate(0, -4);
+        const weaponPivotX = frontHandX - 1.5;
+        const weaponPivotY = frontHandY - 0.5;
+        ctx.translate(weaponPivotX, weaponPivotY);
         ctx.rotate(angle);
         const weaponImg = getWeaponImage(this.weapon.type);
         if (weaponImg && weaponImg.complete && weaponImg.naturalWidth > 0) {
-            const weaponW = 30;
-            const weaponH = 12;
+            const weaponW = 42;
+            const weaponH = 16;
             ctx.save();
             ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(weaponImg, -1, -weaponH * 0.5, weaponW, weaponH);
+            ctx.drawImage(weaponImg, -5, -weaponH * 0.5, weaponW, weaponH);
             ctx.restore();
         } else {
             ctx.fillStyle = this.weapon.color;
+            ctx.scale(1.3, 1.3);
             WeaponArt[this.weapon.type] ? WeaponArt[this.weapon.type](ctx) : ctx.fillRect(0, -2, 12, 4);
         }
         ctx.restore();
 
         // Front arm gripping weapon
-        const frontShoulderX = 1;
-        const frontElbowX = frontShoulderX + Math.cos(angle) * 6.5;
-        const frontElbowY = shoulderY + Math.sin(angle) * 6.5;
-        const frontHandX = frontShoulderX + Math.cos(angle) * 10.5;
-        const frontHandY = shoulderY + Math.sin(angle) * 10.5;
-        drawArmSegment(frontShoulderX, shoulderY, frontElbowX, frontElbowY, 6.2, '#c88f6d', '#6a4634');
-        drawArmSegment(frontElbowX, frontElbowY, frontHandX, frontHandY, 5.6, '#d39a77', '#6a4634');
+        drawArmSegment(frontShoulderX, shoulderY, frontElbowX, frontElbowY, 6.4, '#c88f6d', '#6a4634');
+        drawArmSegment(frontElbowX, frontElbowY, frontHandX, frontHandY, 5.8, '#d39a77', '#6a4634');
         drawDetailedHand(frontHandX, frontHandY, 1.0, true);
 
         if (this.isCharging) {
