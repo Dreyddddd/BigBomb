@@ -211,6 +211,23 @@ function getBootsImage() {
     return bootsImage;
 }
 
+const weaponImageCache = new Map();
+function getWeaponImage(weaponType) {
+    if (!weaponType) return null;
+    if (!weaponImageCache.has(weaponType)) {
+        const img = new Image();
+        img.onerror = () => {
+            if (!img._triedFallback) {
+                img._triedFallback = true;
+                img.src = `Assets/Images/WeaponIcons/${weaponType}.jpg`;
+            }
+        };
+        img.src = `Assets/Images/Weapons/${weaponType}.png`;
+        weaponImageCache.set(weaponType, img);
+    }
+    return weaponImageCache.get(weaponType);
+}
+
 function defaultCosmetics() {
     return {
         head: '1',
@@ -2157,13 +2174,98 @@ class Character {
         if (!this.facingRight) aimX = -aimX;
         let angle = Math.atan2(aimY, aimX);
 
+        const shoulderY = -18;
+        const handTone = '#f3c7a6';
+        const armDark = '#b68261';
+
+        const drawArmSegment = (fromX, fromY, toX, toY, width, color, outline) => {
+            const dx = toX - fromX;
+            const dy = toY - fromY;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+            const nx = -dy / len;
+            const ny = dx / len;
+            const hw = width * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(fromX + nx * hw, fromY + ny * hw);
+            ctx.lineTo(fromX - nx * hw, fromY - ny * hw);
+            ctx.lineTo(toX - nx * hw, toY - ny * hw);
+            ctx.lineTo(toX + nx * hw, toY + ny * hw);
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = outline;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        };
+
+        const drawDetailedHand = (x, y, scale = 1, grip = false) => {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+            ctx.fillStyle = handTone;
+            ctx.strokeStyle = armDark;
+            ctx.lineWidth = 1;
+
+            ctx.beginPath();
+            ctx.roundRect(-3, -2.5, 6, 5, 2.2);
+            ctx.fill();
+            ctx.stroke();
+
+            if (grip) {
+                for (let i = 0; i < 3; i++) {
+                    const fx = -1.5 + i * 1.9;
+                    ctx.beginPath();
+                    ctx.moveTo(fx, 1.5);
+                    ctx.lineTo(fx + 0.6, 3.2);
+                    ctx.stroke();
+                }
+            }
+
+            ctx.fillStyle = '#e4b393';
+            ctx.beginPath();
+            ctx.ellipse(-3.3, -0.1, 1.1, 1.6, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        };
+
+        const shoulderX = 3;
+        const elbowX = shoulderX + Math.cos(angle) * 8;
+        const elbowY = shoulderY + Math.sin(angle) * 8;
+        const handX = shoulderX + Math.cos(angle) * 15;
+        const handY = shoulderY + Math.sin(angle) * 15;
+
+        // Back/support arm
+        drawArmSegment(-2, shoulderY + 2, elbowX - 4, elbowY + 1, 5.5, '#a97052', '#5a3d2d');
+        drawArmSegment(elbowX - 4, elbowY + 1, handX - 3, handY + 1, 5.2, '#be8968', '#5a3d2d');
+        drawDetailedHand(handX - 3, handY + 1, 0.95, true);
+
+        // Weapon sprite in hand
         ctx.save();
-        ctx.translate(0, -4); ctx.rotate(angle);
-        ctx.fillStyle = this.weapon.color;
-        WeaponArt[this.weapon.type] ? WeaponArt[this.weapon.type](ctx) : ctx.fillRect(0, -2, 12, 4);
-        ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI*2); ctx.fill(); 
-        ctx.beginPath(); ctx.arc(8, 2, 2.5, 0, Math.PI*2); ctx.fill(); 
+        ctx.translate(0, -4);
+        ctx.rotate(angle);
+        const weaponImg = getWeaponImage(this.weapon.type);
+        if (weaponImg && weaponImg.complete && weaponImg.naturalWidth > 0) {
+            const weaponW = 30;
+            const weaponH = 12;
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(weaponImg, -1, -weaponH * 0.5, weaponW, weaponH);
+            ctx.restore();
+        } else {
+            ctx.fillStyle = this.weapon.color;
+            WeaponArt[this.weapon.type] ? WeaponArt[this.weapon.type](ctx) : ctx.fillRect(0, -2, 12, 4);
+        }
         ctx.restore();
+
+        // Front arm gripping weapon
+        const frontShoulderX = 1;
+        const frontElbowX = frontShoulderX + Math.cos(angle) * 6.5;
+        const frontElbowY = shoulderY + Math.sin(angle) * 6.5;
+        const frontHandX = frontShoulderX + Math.cos(angle) * 10.5;
+        const frontHandY = shoulderY + Math.sin(angle) * 10.5;
+        drawArmSegment(frontShoulderX, shoulderY, frontElbowX, frontElbowY, 6.2, '#c88f6d', '#6a4634');
+        drawArmSegment(frontElbowX, frontElbowY, frontHandX, frontHandY, 5.6, '#d39a77', '#6a4634');
+        drawDetailedHand(frontHandX, frontHandY, 1.0, true);
 
         if (this.isCharging) {
             let c = Math.floor((this.charge/CONFIG.MAX_CHARGE)*255);
