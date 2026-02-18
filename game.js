@@ -530,7 +530,9 @@ class BackgroundGenerator {
         });
     }
     draw(ctx, camera) {
-        this.layers.forEach(layer => {
+        const cameraRight = camera.x + CONFIG.VIEWPORT_WIDTH;
+        for (let i = 0; i < this.layers.length; i++) {
+            const layer = this.layers[i];
             let px = camera.x * layer.speedX;
             let py = camera.y * layer.speedY;
             let w = layer.canvas.width;
@@ -539,10 +541,10 @@ class BackgroundGenerator {
             ctx.save();
             ctx.globalAlpha = layer.alpha;
             ctx.drawImage(layer.canvas, startX, py);
-            if (startX + w < camera.x + CONFIG.VIEWPORT_WIDTH) ctx.drawImage(layer.canvas, startX + w, py);
-            if (startX + w * 2 < camera.x + CONFIG.VIEWPORT_WIDTH) ctx.drawImage(layer.canvas, startX + w * 2, py);
+            if (startX + w < cameraRight) ctx.drawImage(layer.canvas, startX + w, py);
+            if (startX + w * 2 < cameraRight) ctx.drawImage(layer.canvas, startX + w * 2, py);
             ctx.restore();
-        });
+        }
     }
 }
 
@@ -556,8 +558,9 @@ class Fire {
             game.particleSystem.emit(this.pos.clone(), pVel, 20 + Math.random()*20, colors[Math.floor(Math.random()*colors.length)], 'fire');
         }
         if (this.life % 30 === 0) {
+            const fireDamageRadiusSq = 20 * 20;
             game.forEachNearbyEntity(this.pos, 20, (e) => {
-                if (!e.dead && e.pos.dist(this.pos) < 20) {
+                if (!e.dead && distSq(e.pos, this.pos) < fireDamageRadiusSq) {
                     e.takeDamage(5, null, game, 'fire'); 
                     game.particleSystem.emit(e.pos.clone(), new Vector2(0,-1), 10, '#fff', 'spark');
                 }
@@ -580,25 +583,35 @@ class BlackHoleEffect {
         this.radius = radius; 
         this.angle = 0; 
         this.ownerId = ownerId; 
+        this.isBlackHoleEffect = true;
     }
     update(game) {
         this.life--; this.angle += 0.2;
+        const pullRadiusSq = 400 * 400;
+        const originX = this.pos.x;
+        const originY = this.pos.y;
         game.forEachNearbyEntity(this.pos, 400, (e) => {
-            if (!e.dead) {
-                const distSquared = distSq(this.pos, e.pos);
-                if (distSquared < 400 * 400) {
-                    const dist = Math.sqrt(distSquared);
-                    let force = 150 / (dist + 10);
-                    let pull = this.pos.sub(e.pos).normalize().mult(force);
-                    e.vel = e.vel.add(pull);
-                }
-            }
+            if (e.dead) return;
+            const dx = originX - e.pos.x;
+            const dy = originY - e.pos.y;
+            const dSq = dx * dx + dy * dy;
+            if (dSq <= 0.0001 || dSq >= pullRadiusSq) return;
+            const dist = Math.sqrt(dSq);
+            const force = 150 / (dist + 10);
+            const invDist = 1 / dist;
+            e.vel.x += dx * invDist * force;
+            e.vel.y += dy * invDist * force;
         });
-        game.crates.forEach(c => {
-            if (distSq(this.pos, c.pos) < 400 * 400) {
-                c.pos = c.pos.add(this.pos.sub(c.pos).normalize().mult(5));
-            }
-        });
+        for (let i = 0; i < game.crates.length; i++) {
+            const c = game.crates[i];
+            const dx = originX - c.pos.x;
+            const dy = originY - c.pos.y;
+            const dSq = dx * dx + dy * dy;
+            if (dSq <= 0.0001 || dSq >= pullRadiusSq) continue;
+            const invDist = 1 / Math.sqrt(dSq);
+            c.pos.x += dx * invDist * 5;
+            c.pos.y += dy * invDist * 5;
+        }
         if (game.particleSystem.activeCount < CONFIG.MAX_PARTICLES) {
             for(let i=0; i<2; i++) {
                 let a = Math.random() * Math.PI * 2;
@@ -613,9 +626,10 @@ class BlackHoleEffect {
             game.terrain.destroy(this.pos.x, this.pos.y, this.radius);
             game.shakeScreen(20); game.flashScreen();
             const blastEntities = game.getNearbyEntities(this.pos, this.radius);
+            const blastRadiusSq = this.radius * this.radius;
             for (let i = 0; i < blastEntities.length; i++) {
                 const ent = blastEntities[i];
-                if (this.pos.dist(ent.pos) < this.radius) ent.takeDamage(999, this.ownerId, game, 'blackhole'); 
+                if (distSq(this.pos, ent.pos) < blastRadiusSq) ent.takeDamage(999, this.ownerId, game, 'blackhole'); 
             }
         }
         return this.life > 0;
@@ -756,21 +770,27 @@ class Flag {
             if (this.carrier.dead) {
                 this.drop();
             } else {
-                this.pos = this.carrier.pos.clone().add(new Vector2(0, -30));
+                this.pos.x = this.carrier.pos.x;
+                this.pos.y = this.carrier.pos.y - 30;
                 
                 // -- CAPTURE LOGIC --
                 // If I am being carried, and my carrier is in THEIR base zone, they score.
-                const baseZoneRadius = 150;
-                let carrierTeamBasePos = null;
-                if (this.carrier.team === 1) carrierTeamBasePos = new Vector2(250, terrain.height - 400); // Blue Base
-                else if (this.carrier.team === 2) carrierTeamBasePos = new Vector2(game.terrain.width - 250, terrain.height - 400); // Red Base
+                const baseZoneRadiusSq = 150 * 150;
+                let baseX = null;
+                let baseY = terrain.height - 400;
+                if (this.carrier.team === 1) baseX = 250; // Blue Base
+                else if (this.carrier.team === 2) baseX = game.terrain.width - 250; // Red Base
                 
-                if (carrierTeamBasePos && this.carrier.pos.dist(carrierTeamBasePos) < baseZoneRadius) {
-                    // Check if their flag is at home
-                    let carriersFlag = game.flags.find(f => f.teamId === this.carrier.team);
-                    if (carriersFlag && carriersFlag.state === 'at_base') {
-                        game.scoreCapture(this.carrier.team);
-                        this.returnToBase(game);
+                if (baseX !== null) {
+                    const dx = this.carrier.pos.x - baseX;
+                    const dy = this.carrier.pos.y - baseY;
+                    if (dx * dx + dy * dy < baseZoneRadiusSq) {
+                        // Check if their flag is at home
+                        let carriersFlag = game.flags.find(f => f.teamId === this.carrier.team);
+                        if (carriersFlag && carriersFlag.state === 'at_base') {
+                            game.scoreCapture(this.carrier.team);
+                            this.returnToBase(game);
+                        }
                     }
                 }
             }
@@ -780,19 +800,18 @@ class Flag {
             if (this.dropTimer <= 0) this.returnToBase(game);
         }
 
-        entities.forEach(ent => {
-            if (ent.dead) return;
-            if (this.pos.dist(ent.pos) < 30) {
-                if (ent.team !== 0 && ent.team !== this.teamId) {
-                    if (this.state !== 'carried') {
-                        this.pickup(ent, game);
-                    }
-                } 
-                else if (ent.team === this.teamId) {
-                    if (this.state === 'dropped') {
-                        this.returnToBase(game);
-                    } 
+        const pickupRadiusSq = 30 * 30;
+        game.forEachNearbyEntity(this.pos, 30, (ent) => {
+            if (ent.dead || distSq(this.pos, ent.pos) >= pickupRadiusSq) return;
+            if (ent.team !== 0 && ent.team !== this.teamId) {
+                if (this.state !== 'carried') {
+                    this.pickup(ent, game);
                 }
+            } 
+            else if (ent.team === this.teamId) {
+                if (this.state === 'dropped') {
+                    this.returnToBase(game);
+                } 
             }
         });
     }
@@ -1058,15 +1077,19 @@ class Terrain {
             return;
         }
 
-        const regionData = this.ctx.getImageData(minX, minY, width, height).data;
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                const srcIndex = (y * width + x) * 4;
-                const destIndex = ((minY + y) * this.width + (minX + x)) * 4;
-                this.collisionData[destIndex] = regionData[srcIndex];
-                this.collisionData[destIndex + 1] = regionData[srcIndex + 1];
-                this.collisionData[destIndex + 2] = regionData[srcIndex + 2];
-                this.collisionData[destIndex + 3] = regionData[srcIndex + 3];
+        const TILE_SIZE = 256;
+        for (let ty = minY; ty < maxY; ty += TILE_SIZE) {
+            const tileH = Math.min(TILE_SIZE, maxY - ty);
+            for (let tx = minX; tx < maxX; tx += TILE_SIZE) {
+                const tileW = Math.min(TILE_SIZE, maxX - tx);
+                if (tileW <= 0 || tileH <= 0) continue;
+
+                const regionData = this.ctx.getImageData(tx, ty, tileW, tileH).data;
+                for (let y = 0; y < tileH; y++) {
+                    const srcRow = y * tileW * 4;
+                    const destRow = ((ty + y) * this.width + tx) * 4;
+                    this.collisionData.set(regionData.subarray(srcRow, srcRow + tileW * 4), destRow);
+                }
             }
         }
     }
@@ -1149,10 +1172,23 @@ class Terrain {
     }
     
     raycast(start, end) {
-        let dir = end.sub(start); let dist = dir.mag(); dir = dir.normalize(); let pos = start.clone();
-        for(let i=0; i<dist; i+=15) {
-            pos = pos.add(dir.mult(15));
-            if (this.isSolid(pos.x, pos.y)) return true;
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= 0.0001) return this.isSolid(start.x, start.y);
+
+        const stepSize = 15;
+        const invDist = 1 / dist;
+        const stepX = dx * invDist * stepSize;
+        const stepY = dy * invDist * stepSize;
+        const steps = Math.ceil(dist / stepSize);
+
+        let x = start.x;
+        let y = start.y;
+        for (let i = 0; i < steps; i++) {
+            x += stepX;
+            y += stepY;
+            if (this.isSolid(x, y)) return true;
         }
         return false;
     }
@@ -1251,8 +1287,11 @@ class Projectile {
         
         // Check against terrain first to prevent shooting through walls
         let hitWall = shouldRaycast ? terrain.raycast(this.pos, nextPos) : false;
-        const segmentMid = this.pos.add(nextPos).mult(0.5);
-        const segmentRadius = Math.max(60, this.pos.dist(nextPos) / 2 + 30);
+        const segmentDx = nextPos.x - this.pos.x;
+        const segmentDy = nextPos.y - this.pos.y;
+        const segmentMid = new Vector2((this.pos.x + nextPos.x) * 0.5, (this.pos.y + nextPos.y) * 0.5);
+        const segmentLen = Math.sqrt(segmentDx * segmentDx + segmentDy * segmentDy);
+        const segmentRadius = Math.max(60, segmentLen * 0.5 + 30);
         const shouldCheckEntities = !(this.type.type === 'blaster' || this.type.type === 'rapid') || (game.tick + this.ownerId) % 2 === 0;
         
         if (shouldCheckEntities) {
@@ -1267,7 +1306,7 @@ class Projectile {
                 let hitRadius = this.type.type === 'laser' ? 10 : Math.max(ent.size.x * 0.5, ent.size.y * 0.5);
                 if (ent.colliderTop !== undefined && ent.colliderBottom !== undefined && ent.colliderHalfWidth !== undefined) {
                     const verticalShift = (ent.colliderTop - ent.colliderBottom) * 0.35;
-                    collisionCenter = ent.pos.add(new Vector2(0, -verticalShift));
+                    collisionCenter = { x: ent.pos.x, y: ent.pos.y - verticalShift };
                     hitRadius = Math.max(ent.colliderHalfWidth + 3, (ent.colliderTop + ent.colliderBottom) * 0.5);
                 }
                 let distToTrajectory = distToSegmentSquared(collisionCenter, this.pos, nextPos);
@@ -1836,32 +1875,38 @@ class Character {
              game.checkWinCondition();
         }
 
-        game.effects.forEach(e => {
-            if(e instanceof BlackHoleEffect && this.pos.dist(e.pos) < 400) {
-                let pull = e.pos.sub(this.pos).normalize().mult((200/(this.pos.dist(e.pos)+10))*0.05 * this.perkModifiers.blackholePull);
-                this.vel = this.vel.add(pull);
-            }
-        });
+        const blackHoleRadiusSq = 400 * 400;
+        for (let i = 0; i < game.effects.length; i++) {
+            const e = game.effects[i];
+            if (!e || !e.isBlackHoleEffect) continue;
+            const dSq = distSq(this.pos, e.pos);
+            if (dSq >= blackHoleRadiusSq) continue;
+            const dist = Math.sqrt(dSq);
+            const dir = e.pos.sub(this.pos).normalize();
+            const force = (200 / (dist + 10)) * 0.05 * this.perkModifiers.blackholePull;
+            this.vel = this.vel.add(dir.mult(force));
+        }
 
-        crates.forEach(c => {
-            if (c.active && this.pos.dist(c.pos) < 25) {
-                if (c.isMedkit) this.hp = Math.min(this.getMaxHp(), this.hp + 40 * (this.hasPerk('tenacity') ? 1.15 : 1));
-                else if (c.crateType === 'powerup') this.applyBuff(c.content);
-                else if (c.content) { 
-                        if (!this.inventory.find(w => w.name === c.content.name)) {
-                            if (this.inventory.length < CONFIG.MAX_INVENTORY) {
-                                this.inventory.push({...c.content});
-                                this.switchWeapon(this.inventory.length - 1);
-                            } else {
-                                this.inventory[this.weaponIndex] = {...c.content};
-                                this.weapon = this.inventory[this.weaponIndex];
-                            }
-                            if(this === game.player) game.updateInventoryUI();
-                        }
+        const cratePickupRadiusSq = 25 * 25;
+        for (let i = 0; i < crates.length; i++) {
+            const c = crates[i];
+            if (!c.active || distSq(this.pos, c.pos) >= cratePickupRadiusSq) continue;
+            if (c.isMedkit) this.hp = Math.min(this.getMaxHp(), this.hp + 40 * (this.hasPerk('tenacity') ? 1.15 : 1));
+            else if (c.crateType === 'powerup') this.applyBuff(c.content);
+            else if (c.content) {
+                if (!this.inventory.find(w => w.name === c.content.name)) {
+                    if (this.inventory.length < CONFIG.MAX_INVENTORY) {
+                        this.inventory.push({...c.content});
+                        this.switchWeapon(this.inventory.length - 1);
+                    } else {
+                        this.inventory[this.weaponIndex] = {...c.content};
+                        this.weapon = this.inventory[this.weaponIndex];
+                    }
+                    if(this === game.player) game.updateInventoryUI();
                 }
-                c.active = false;
             }
-        });
+            c.active = false;
+        }
 
         let targetSpeed = 0;
         let maxSpeed = CONFIG.MAX_SPEED * this.speedMultiplier * this.perkModifiers.speed;
@@ -2205,15 +2250,15 @@ class Bot extends Character {
         }
         this.input.aimTarget = aimPoint;
 
-        let dist = Math.sqrt(distSq(this.pos, targetPos));
+        let distSqToTarget = distSq(this.pos, targetPos);
         
         // Movement Logic
         // If enemy is too close, maybe move AWAY?
-        if (closeEnemy && dist < 150) {
+        if (closeEnemy && distSqToTarget < 150 * 150) {
              // Retreat logic: Move away from enemy
              if (targetPos.x > this.pos.x) { this.input.right = false; this.input.left = true; } // Enemy right, go left
              else { this.input.right = true; this.input.left = false; } // Enemy left, go right
-        } else if (dist > 50) {
+        } else if (distSqToTarget > 50 * 50) {
             if (targetPos.x > this.pos.x + 20) { this.input.right = true; this.input.left = false; }
             else if (targetPos.x < this.pos.x - 20) { this.input.right = false; this.input.left = true; }
             else { this.input.right = false; this.input.left = false; }
@@ -2263,14 +2308,14 @@ class Bot extends Character {
         
         // Combat Logic
         if (this.currentTarget instanceof Character && !this.currentTarget.dead) {
-            let enemyDist = Math.sqrt(distSq(this.pos, this.currentTarget.pos));
+            let enemyDistSq = distSq(this.pos, this.currentTarget.pos);
             // Don't shoot self if wall is close unless stuck
             let wallFace = terrain.isSolid(this.pos.x + (this.facingRight?20:-20), this.pos.y);
             
-            if (enemyDist < 700 && (!wallFace || this.stuckTimer > 30)) {
+            if (enemyDistSq < 700 * 700 && (!wallFace || this.stuckTimer > 30)) {
                  this.input.shoot = true;
                  // Add inaccuracy based on distance
-                 let jitter = (enemyDist / 100) * 5;
+                 let jitter = (Math.sqrt(enemyDistSq) / 100) * 5;
                  this.input.aimTarget = this.currentTarget.pos.add(new Vector2((Math.random()-0.5)*jitter, (Math.random()-0.5)*jitter)); 
             } else {
                  this.input.shoot = false;
@@ -2314,7 +2359,7 @@ class Bot extends Character {
                  }
              }
              // Only go if it's reasonably close (don't cross entire map just for loot if fighting)
-             if (nearestCrate && Math.sqrt(nearestCrateDist) < 800) {
+             if (nearestCrate && nearestCrateDist < 800 * 800) {
                  this.currentTarget = { pos: nearestCrate.pos, isStatic: true };
                  return;
              }
@@ -2378,7 +2423,7 @@ class Bot extends Character {
                      this.currentTarget = nearestEnemy;
                  } else {
                      // Roam
-                     if (!this.roamSpot || Math.sqrt(distSq(this.pos, this.roamSpot)) < 100 || this.decisionTimer < -200) {
+                     if (!this.roamSpot || distSq(this.pos, this.roamSpot) < 100 * 100 || this.decisionTimer < -200) {
                          this.roamSpot = new Vector2(Math.random()*CONFIG.WORLD_WIDTH, Math.random() * (CONFIG.WORLD_HEIGHT - 300));
                          this.decisionTimer = 300;
                      }
@@ -2397,6 +2442,7 @@ class Game {
         this.cameraTarget = null;
         this.statsVisible = false;
         this.statsDirty = true;
+        this.lastStatsRenderTick = -9999;
         this.input = { keys: {}, mouse: { screenPos: new Vector2(CONFIG.VIEWPORT_WIDTH/2, CONFIG.VIEWPORT_HEIGHT/2), worldPos: new Vector2(0,0), down: false } };
         this.aliveEntities = [];
         this.activeCrates = [];
@@ -2468,7 +2514,8 @@ class Game {
         }
         this.resize();
 
-        requestAnimationFrame((t) => this.loop(t));
+        this.loop = this.loop.bind(this);
+        requestAnimationFrame(this.loop);
     }
 
     resize() {
@@ -2716,13 +2763,13 @@ class Game {
         const timer = this.dom.ctfRespawnTimer;
         if (!timer) return;
         if (CONFIG.GAME_MODE === 'CTF' && this.player && this.player.dead) {
-             timer.style.display = 'block';
+             if (timer.style.display !== 'block') timer.style.display = 'block';
              const respawnVal = this.dom.respawnTimeVal;
              if (respawnVal) {
                  respawnVal.innerText = Math.ceil(this.player.respawnTimer / 60);
              }
         } else {
-             timer.style.display = 'none';
+             if (timer.style.display !== 'none') timer.style.display = 'none';
         }
     }
 
@@ -2844,7 +2891,7 @@ class Game {
         } catch (err) {
             console.error('Game loop error:', err);
         } finally {
-            requestAnimationFrame(() => this.loop());
+            requestAnimationFrame(this.loop);
         }
     }
 
@@ -2984,7 +3031,7 @@ class Game {
         this.blackHoles.length = 0;
         for (let i = 0; i < this.effects.length; i++) {
             const effect = this.effects[i];
-            if (effect instanceof BlackHoleEffect) this.blackHoles.push(effect);
+            if (effect && effect.isBlackHoleEffect) this.blackHoles.push(effect);
         }
         
         // CAMERA LOGIC WITH MOUSE OFFSET
@@ -3011,7 +3058,8 @@ class Game {
             }
         }
         
-        if (this.statsVisible && (this.statsDirty || this.tick % 20 === 0)) {
+        const STATS_RENDER_INTERVAL = 30;
+        if (this.statsVisible && (this.statsDirty || this.tick - this.lastStatsRenderTick >= STATS_RENDER_INTERVAL)) {
             let html = '';
             const sortedEntities = [...this.entities].sort((a,b)=>b.kills-a.kills);
             sortedEntities.forEach(e => {
@@ -3022,6 +3070,7 @@ class Game {
             const statsBody = this.dom.statsBody;
             if (statsBody) statsBody.innerHTML = html;
             this.statsDirty = false;
+            this.lastStatsRenderTick = this.tick;
         }
         const hpDisplay = this.dom.hpDisplay;
         if (hpDisplay && this.player) {
