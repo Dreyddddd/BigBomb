@@ -110,10 +110,28 @@ class RenderBackend {
         this.init();
     }
 
+    forceCanvasFallback(err) {
+        if (err) {
+            console.warn('PIXI render disabled, fallback to Canvas2D:', err);
+        }
+        this.mode = 'canvas';
+        this.presentFrame = () => {};
+        if (this.pixiApp && typeof this.pixiApp.destroy === 'function') {
+            this.pixiApp.destroy(true);
+        }
+        this.pixiApp = null;
+        this.pixiTexture = null;
+        this.pixiSprite = null;
+        this.offscreenCanvas = null;
+        this.canvas.width = this.viewportWidth;
+        this.canvas.height = this.viewportHeight;
+        this.ctx2d = this.canvas.getContext('2d');
+    }
+
     init() {
         const hasPixi = typeof window !== 'undefined' && typeof window.PIXI !== 'undefined';
         if (!hasPixi) {
-            this.ctx2d = this.canvas.getContext('2d');
+            this.forceCanvasFallback();
             return;
         }
 
@@ -124,6 +142,10 @@ class RenderBackend {
             this.offscreenCanvas.width = this.viewportWidth;
             this.offscreenCanvas.height = this.viewportHeight;
             this.ctx2d = this.offscreenCanvas.getContext('2d');
+            if (!this.ctx2d) {
+                this.forceCanvasFallback(new Error('Offscreen 2D context unavailable'));
+                return;
+            }
 
             this.pixiApp = new PIXI.Application({
                 view: this.canvas,
@@ -133,8 +155,12 @@ class RenderBackend {
                 autoDensity: false,
                 backgroundAlpha: 0,
                 clearBeforeRender: true,
-                powerPreference: 'high-performance'
+                powerPreference: 'high-performance',
+                autoStart: false,
+                sharedTicker: false
             });
+
+            if (this.pixiApp.ticker) this.pixiApp.ticker.stop();
 
             this.pixiTexture = PIXI.Texture.from(this.offscreenCanvas);
             this.pixiTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
@@ -144,18 +170,19 @@ class RenderBackend {
             this.pixiApp.stage.addChild(this.pixiSprite);
 
             this.presentFrame = () => {
-                if (this.pixiTexture && this.pixiTexture.baseTexture) {
-                    this.pixiTexture.baseTexture.update();
-                }
-                if (this.pixiApp && this.pixiApp.renderer) {
-                    this.pixiApp.renderer.render(this.pixiApp.stage);
+                try {
+                    if (this.pixiTexture && this.pixiTexture.baseTexture) {
+                        this.pixiTexture.baseTexture.update();
+                    }
+                    if (this.pixiApp && this.pixiApp.renderer) {
+                        this.pixiApp.renderer.render(this.pixiApp.stage);
+                    }
+                } catch (err) {
+                    this.forceCanvasFallback(err);
                 }
             };
         } catch (err) {
-            console.warn('PIXI init failed, fallback to Canvas2D:', err);
-            this.mode = 'canvas';
-            this.ctx2d = this.canvas.getContext('2d');
-            this.presentFrame = () => {};
+            this.forceCanvasFallback(err);
         }
     }
 
@@ -163,6 +190,8 @@ class RenderBackend {
         this.viewportWidth = width;
         this.viewportHeight = height;
         if (this.mode === 'pixi') {
+            this.canvas.width = width;
+            this.canvas.height = height;
             this.offscreenCanvas.width = width;
             this.offscreenCanvas.height = height;
             if (this.pixiApp && this.pixiApp.renderer) {
@@ -3322,7 +3351,8 @@ class Game {
     }
 
     draw() {
-        this.ctx.fillStyle = '#000'; this.ctx.fillRect(0,0,this.canvas.width, this.canvas.height);
+        const viewCanvas = this.ctx && this.ctx.canvas ? this.ctx.canvas : this.canvas;
+        this.ctx.fillStyle = '#000'; this.ctx.fillRect(0,0,viewCanvas.width, viewCanvas.height);
         
         if (!this.terrain) return;
 
@@ -3335,8 +3365,8 @@ class Game {
         // Calculate the slice of terrain canvas to draw based on camera
         // Note: The context is already translated by -camera.x, -camera.y.
         // So drawing at (camera.x, camera.y) in world coordinates maps to (0,0) on screen.
-        let vw = this.canvas.width;
-        let vh = this.canvas.height;
+        let vw = viewCanvas.width;
+        let vh = viewCanvas.height;
         let sx = Math.max(0, Math.floor(this.camera.x));
         let sy = Math.max(0, Math.floor(this.camera.y));
         let sw = Math.min(vw, this.terrain.width - sx);
@@ -3381,10 +3411,10 @@ class Game {
         if (this.noisePattern) {
             this.ctx.globalAlpha = 0.04;
             this.ctx.fillStyle = this.noisePattern;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.fillRect(0, 0, viewCanvas.width, viewCanvas.height);
             this.ctx.globalAlpha = 1;
         }
-        if (this.flash > 0) { this.ctx.fillStyle = `rgba(255,255,255,${this.flash/20})`; this.ctx.fillRect(0,0,this.canvas.width, this.canvas.height); this.flash--; }
+        if (this.flash > 0) { this.ctx.fillStyle = `rgba(255,255,255,${this.flash/20})`; this.ctx.fillRect(0,0,viewCanvas.width, viewCanvas.height); this.flash--; }
         if (this.renderer) this.renderer.present();
     }
 }
