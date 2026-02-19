@@ -1151,7 +1151,12 @@ class Terrain {
             this.ctx.globalCompositeOperation = 'source-atop';
             
             const dynamicCount = Math.floor(radius * (type === 'nuke' ? 1.6 : 0.9));
-            const count = type === 'nuke' ? Math.max(160, Math.min(320, dynamicCount)) : Math.max(40, Math.min(160, dynamicCount));
+            let count = type === 'nuke' ? Math.max(160, Math.min(320, dynamicCount)) : Math.max(40, Math.min(160, dynamicCount));
+            const perfLevel = (typeof gameInstance !== 'undefined' && gameInstance) ? (gameInstance.perfLevel || 0) : 0;
+            if (perfLevel > 0) {
+                const mult = perfLevel === 1 ? 0.7 : 0.45;
+                count = Math.max(type === 'nuke' ? 80 : 24, Math.floor(count * mult));
+            }
             for(let i=0; i<count; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const dist = radius * (0.85 + Math.random() * 0.3); 
@@ -1461,6 +1466,11 @@ class Projectile {
              let fireCount = this.type.burn || 10;
              const owner = game.getEntityById(this.ownerId);
              if (owner && owner.perkModifiers) fireCount += owner.perkModifiers.fireTrailBonus;
+             const perf = game ? (game.perfLevel || 0) : 0;
+             if (perf > 0) {
+                 const mult = perf === 1 ? 0.7 : 0.45;
+                 fireCount = Math.max(3, Math.floor(fireCount * mult));
+             }
              for(let i=0; i<fireCount; i++) {
                  let v = new Vector2((Math.random()-0.5)*8, -2 - Math.random()*5);
                  let p = new Projectile(this.pos.clone().add(new Vector2(0,-5)), v, {type: 'fire_droplet', color: '#e67e22'}, this.ownerId);
@@ -1473,7 +1483,9 @@ class Projectile {
         }
 
         if (this.type.type === 'nuke') {
-            for(let i=0; i<50; i++) {
+            const perf = game ? (game.perfLevel || 0) : 0;
+            const nukeParticleCount = perf === 0 ? 50 : (perf === 1 ? 30 : 16);
+            for(let i=0; i<nukeParticleCount; i++) {
                 let v = new Vector2((Math.random()-0.5)*15, -Math.random()*20);
                 game.particleSystem.emit(this.pos.clone(), v, 100 + Math.random()*50, '#f1c40f', 'fire');
             }
@@ -1839,8 +1851,11 @@ class Character {
             // CTF Respawn Timer (20 sec)
             if (CONFIG.GAME_MODE === 'CTF') this.respawnTimer = CONFIG.CTF_RESPAWN_TIME;
 
-            for(let i=0; i<30; i++) game.particleSystem.emit(this.pos.clone(), new Vector2((Math.random()-0.5)*5, (Math.random()-0.5)*5), 60, '#8a0303', 'blood');
-            for(let i=0; i<6; i++) game.particleSystem.emit(this.pos.clone(), new Vector2((Math.random()-0.5)*6, -Math.random()*6), 100, '#660000', 'chunk');
+            const perf = game ? (game.perfLevel || 0) : 0;
+            const bloodCount = perf === 0 ? 30 : (perf === 1 ? 18 : 10);
+            const chunkCount = perf === 0 ? 6 : (perf === 1 ? 4 : 2);
+            for(let i=0; i<bloodCount; i++) game.particleSystem.emit(this.pos.clone(), new Vector2((Math.random()-0.5)*5, (Math.random()-0.5)*5), 60, '#8a0303', 'blood');
+            for(let i=0; i<chunkCount; i++) game.particleSystem.emit(this.pos.clone(), new Vector2((Math.random()-0.5)*6, -Math.random()*6), 100, '#660000', 'chunk');
 
             if (attackerId !== undefined && attackerId !== null && attackerId !== this.id) {
                 let killer = game.getEntityById(attackerId);
@@ -2065,7 +2080,8 @@ class Character {
         ctx.translate(this.pos.x, this.pos.y);
 
         const aimFacingRight = (this.input.aimTarget.x - this.pos.x) >= 0;
-        this.buffs.forEach(buff => {
+        for (let b = 0; b < this.buffs.length; b++) {
+            const buff = this.buffs[b];
             if (buff.type === 'shield') {
                 ctx.save();
                 ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 2;
@@ -2094,7 +2110,7 @@ class Character {
                    ctx.fillRect(aimFacingRight ? -25 : 15, 0, 10, 2);
                 }
             }
-        });
+        }
 
         // Name
         let nameColor = 'white';
@@ -2174,7 +2190,7 @@ class Character {
         if (!this.facingRight) aimX = -aimX;
         let angle = Math.atan2(aimY, aimX);
 
-        const shoulderY = -11;
+        const shoulderY = -7;
         const handTone = '#f3c7a6';
         const armDark = '#b68261';
 
@@ -2228,7 +2244,7 @@ class Character {
             ctx.restore();
         };
 
-        const frontShoulderX = -1;
+        const frontShoulderX = -6;
         const frontElbowX = frontShoulderX + Math.cos(angle) * 8.2;
         const frontElbowY = shoulderY + 1.2 + Math.sin(angle) * 8.2;
         const frontHandX = frontShoulderX + Math.cos(angle) * 14.5 - Math.sin(angle) * 0.8;
@@ -2253,8 +2269,8 @@ class Character {
         ctx.rotate(angle);
         const weaponImg = getWeaponImage(this.weapon.type);
         if (weaponImg && weaponImg.complete && weaponImg.naturalWidth > 0) {
-            const weaponW = 52;
-            const weaponH = 20;
+            const weaponW = 50;
+            const weaponH = 25;
             ctx.save();
             ctx.imageSmoothingEnabled = false;
             ctx.drawImage(weaponImg, -8, -weaponH * 0.5, weaponW, weaponH);
@@ -2309,7 +2325,7 @@ class Bot extends Character {
 
         // Anti-Camping Check (Every 4 seconds approx)
         if (this.campingTimer > 240) {
-            if (this.pos.dist(this.lastSectorPos) < 200) {
+            if (distSq(this.pos, this.lastSectorPos) < 200 * 200) {
                 // Forced Move
                 this.roamSpot = new Vector2(Math.random()*CONFIG.WORLD_WIDTH, Math.random() * (CONFIG.WORLD_HEIGHT - 300));
                 this.currentTarget = { pos: this.roamSpot, isStatic: true };
@@ -2574,6 +2590,8 @@ class Game {
         
         this.roundOver = false;
         this.lastHpUiValue = -1;
+        this.perfLevel = 0;
+        this.maxProjectiles = 650;
         this.dom = {
             hpDisplay: document.getElementById('hp-display'),
             statsBody: document.getElementById('stats-body'),
@@ -2810,7 +2828,7 @@ class Game {
         this.crates = [];
         for(let i=0; i<8; i++) this.spawnCrate();
 
-        this.entities.forEach(ent => this.respawnEntity(ent));
+        for (let i = 0; i < this.entities.length; i++) this.respawnEntity(this.entities[i]);
         this.projectiles = [];
         this.fires = [];
         this.effects = [];
@@ -3011,6 +3029,12 @@ class Game {
         this.input.mouse.worldPos = this.input.mouse.screenPos.add(this.camera);
         this.updateWaveRespawn();
 
+        if (this.projectiles.length > this.maxProjectiles) {
+            this.projectiles.splice(0, this.projectiles.length - this.maxProjectiles);
+        }
+        const projectileCount = this.projectiles.length;
+        this.perfLevel = projectileCount > 300 ? 2 : (projectileCount > 170 ? 1 : 0);
+
         this.aliveEntities.length = 0;
         this.entityById.clear();
         this.activeCrates.length = 0;
@@ -3078,8 +3102,8 @@ class Game {
             this.player.input.aimTarget = this.input.mouse.worldPos;
         }
         
-        const aiStride = Math.max(1, Math.floor(this.aliveEntities.length / 12));
-        const farBotUpdateStride = this.aliveEntities.length > 24 ? 2 : 1;
+        const aiStride = Math.max(1, Math.ceil(this.aliveEntities.length / 8));
+        const farBotUpdateStride = this.aliveEntities.length > 24 ? 3 : (this.aliveEntities.length > 14 ? 2 : 1);
         const farBotDistSq = 1400 * 1400;
         for (let i = 0; i < this.entities.length; i++) {
             const ent = this.entities[i];
@@ -3102,7 +3126,10 @@ class Game {
         
         for (let i = 0; i < this.crates.length; i++) this.crates[i].update(this.terrain);
         for (let i = 0; i < this.flags.length; i++) this.flags[i].update(this.terrain, this.entities, this);
-        const projectileFarStride = this.projectiles.length > 180 ? 2 : 1;
+        let projectileFarStride = 1;
+        if (this.projectiles.length > 120) projectileFarStride = 2;
+        if (this.projectiles.length > 220) projectileFarStride = 3;
+        if (this.projectiles.length > 320) projectileFarStride = 4;
         const projectileFarDistSq = 1700 * 1700;
         for (let i = this.projectiles.length - 1; i >= 0; i--) { 
             let p = this.projectiles[i];
@@ -3117,7 +3144,8 @@ class Game {
                 this.projectiles.pop();
             }
         }
-        if (this.tick % CONFIG.COLLISION_BATCH_TICKS === 0) {
+        const collisionFlushStride = this.perfLevel === 0 ? CONFIG.COLLISION_BATCH_TICKS : (this.perfLevel === 1 ? 5 : 7);
+        if (this.tick % collisionFlushStride === 0) {
             this.terrain.flushCollisionUpdates();
         }
         for (let i = this.fires.length - 1; i >= 0; i--) {
@@ -3168,11 +3196,12 @@ class Game {
         if (this.statsVisible && (this.statsDirty || this.tick - this.lastStatsRenderTick >= STATS_RENDER_INTERVAL)) {
             let html = '';
             const sortedEntities = [...this.entities].sort((a,b)=>b.kills-a.kills);
-            sortedEntities.forEach(e => {
+            for (let i = 0; i < sortedEntities.length; i++) {
+                const e = sortedEntities[i];
                 let cls = e.team === 1 ? 'row-blue' : (e.team === 2 ? 'row-red' : '');
                 if (e === this.player) cls += ' row-me';
                 html += `<tr class="${cls}"><td>${e.name}</td><td>${e.kills}</td><td>${e.deaths}</td><td>${TEAMS[e.team].name}</td></tr>`;
-            });
+            }
             const statsBody = this.dom.statsBody;
             if (statsBody) statsBody.innerHTML = html;
             this.statsDirty = false;
