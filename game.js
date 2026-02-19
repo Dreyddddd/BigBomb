@@ -2783,16 +2783,6 @@ class Game {
         if (this.dom.scoreBlue) this.dom.scoreBlue.innerText = "0";
         if (this.dom.scoreRed) this.dom.scoreRed.innerText = "0";
 
-        // Warm draw caches immediately to avoid blank first frames before next update tick.
-        this.aliveEntities.length = 0;
-        for (let i = 0; i < this.entities.length; i++) {
-            if (!this.entities[i].dead) this.aliveEntities.push(this.entities[i]);
-        }
-        this.activeCrates.length = 0;
-        for (let i = 0; i < this.crates.length; i++) {
-            if (this.crates[i].active) this.activeCrates.push(this.crates[i]);
-        }
-
         this.updateInventoryUI();
     }
     
@@ -3302,15 +3292,18 @@ class Game {
             obj.pos.x >= viewLeft && obj.pos.x <= viewRight &&
             obj.pos.y >= viewTop && obj.pos.y <= viewBottom;
 
-        const cratesToDraw = this.activeCrates.length ? this.activeCrates : this.crates;
-        const entitiesToDraw = this.aliveEntities.length ? this.aliveEntities : this.entities;
-
         for (let i = 0; i < this.bases.length; i++) { const b = this.bases[i]; if (inView(b)) b.draw(this.ctx); }
         for (let i = 0; i < this.flags.length; i++) { const f = this.flags[i]; if (inView(f)) f.draw(this.ctx); }
-        for (let i = 0; i < cratesToDraw.length; i++) { const c = cratesToDraw[i]; if (inView(c)) c.draw(this.ctx); }
+        for (let i = 0; i < this.crates.length; i++) {
+            const c = this.crates[i];
+            if (c.active && inView(c)) c.draw(this.ctx);
+        }
         for (let i = 0; i < this.fires.length; i++) { const f = this.fires[i]; if (inView(f)) f.draw(this.ctx); }
         for (let i = 0; i < this.effects.length; i++) { const f = this.effects[i]; if (inView(f)) f.draw(this.ctx); else if (!f.pos) f.draw(this.ctx); }
-        for (let i = 0; i < entitiesToDraw.length; i++) { const e = entitiesToDraw[i]; if (inView(e)) e.draw(this.ctx); }
+        for (let i = 0; i < this.entities.length; i++) {
+            const e = this.entities[i];
+            if (!e.dead && inView(e)) e.draw(this.ctx);
+        }
         for (let i = 0; i < this.projectiles.length; i++) {
             const p = this.projectiles[i];
             if (inView(p)) p.draw(this.ctx);
