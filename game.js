@@ -94,6 +94,99 @@ class SpatialGrid {
 }
 
 
+
+class RenderBackend {
+    constructor(canvas, viewportWidth, viewportHeight) {
+        this.canvas = canvas;
+        this.viewportWidth = viewportWidth;
+        this.viewportHeight = viewportHeight;
+        this.mode = 'canvas';
+        this.presentFrame = () => {};
+        this.ctx2d = null;
+        this.offscreenCanvas = null;
+        this.pixiApp = null;
+        this.pixiTexture = null;
+        this.pixiSprite = null;
+        this.init();
+    }
+
+    init() {
+        const hasPixi = typeof window !== 'undefined' && typeof window.PIXI !== 'undefined';
+        if (!hasPixi) {
+            this.ctx2d = this.canvas.getContext('2d');
+            return;
+        }
+
+        try {
+            const PIXI = window.PIXI;
+            this.mode = 'pixi';
+            this.offscreenCanvas = document.createElement('canvas');
+            this.offscreenCanvas.width = this.viewportWidth;
+            this.offscreenCanvas.height = this.viewportHeight;
+            this.ctx2d = this.offscreenCanvas.getContext('2d');
+
+            this.pixiApp = new PIXI.Application({
+                view: this.canvas,
+                width: this.viewportWidth,
+                height: this.viewportHeight,
+                antialias: true,
+                autoDensity: false,
+                backgroundAlpha: 0,
+                clearBeforeRender: true,
+                powerPreference: 'high-performance'
+            });
+
+            this.pixiTexture = PIXI.Texture.from(this.offscreenCanvas);
+            this.pixiTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+            this.pixiSprite = new PIXI.Sprite(this.pixiTexture);
+            this.pixiSprite.x = 0;
+            this.pixiSprite.y = 0;
+            this.pixiApp.stage.addChild(this.pixiSprite);
+
+            this.presentFrame = () => {
+                if (this.pixiTexture && this.pixiTexture.baseTexture) {
+                    this.pixiTexture.baseTexture.update();
+                }
+                if (this.pixiApp && this.pixiApp.renderer) {
+                    this.pixiApp.renderer.render(this.pixiApp.stage);
+                }
+            };
+        } catch (err) {
+            console.warn('PIXI init failed, fallback to Canvas2D:', err);
+            this.mode = 'canvas';
+            this.ctx2d = this.canvas.getContext('2d');
+            this.presentFrame = () => {};
+        }
+    }
+
+    resize(width, height) {
+        this.viewportWidth = width;
+        this.viewportHeight = height;
+        if (this.mode === 'pixi') {
+            this.offscreenCanvas.width = width;
+            this.offscreenCanvas.height = height;
+            if (this.pixiApp && this.pixiApp.renderer) {
+                this.pixiApp.renderer.resize(width, height);
+            }
+            if (this.pixiSprite) {
+                this.pixiSprite.width = width;
+                this.pixiSprite.height = height;
+            }
+        } else if (this.canvas) {
+            this.canvas.width = width;
+            this.canvas.height = height;
+        }
+    }
+
+    getContext() {
+        return this.ctx2d;
+    }
+
+    present() {
+        this.presentFrame();
+    }
+}
+
 // --- 2. Константы ---
 const CONFIG = {
     GRAVITY: 0.1,
@@ -175,7 +268,13 @@ function getHeadImage(headId) {
         img.onload = () => {
             if (typeof updateLobbyPreview === 'function') updateLobbyPreview();
         };
-        img.src = `assets/images/heads/${headId}.png`;
+        img.onerror = () => {
+            if (!img._triedLowerCase) {
+                img._triedLowerCase = true;
+                img.src = `assets/images/heads/${headId}.png`;
+            }
+        };
+        img.src = `Assets/Images/Heads/${headId}.png`;
         headImageCache.set(headId, img);
     }
     return headImageCache.get(headId);
@@ -2558,7 +2657,9 @@ class Bot extends Character {
 
 class Game {
     constructor() {
-        this.canvas = document.getElementById('gameCanvas'); this.ctx = this.canvas.getContext('2d');
+        this.canvas = document.getElementById('gameCanvas');
+        this.renderer = new RenderBackend(this.canvas, CONFIG.VIEWPORT_WIDTH, CONFIG.VIEWPORT_HEIGHT);
+        this.ctx = this.renderer.getContext();
         this.camera = new Vector2(0, 0); this.shake = 0; this.flash = 0; this.tick = 0; this.gameState = 'MENU';
         this.paused = false;
         this.cameraTarget = null;
@@ -2646,8 +2747,8 @@ class Game {
         const container = document.getElementById('gameContainer');
         container.style.width = `${window.innerWidth}px`;
         container.style.height = `${window.innerHeight}px`;
-        this.canvas.width = CONFIG.VIEWPORT_WIDTH;
-        this.canvas.height = CONFIG.VIEWPORT_HEIGHT;
+        this.renderer.resize(CONFIG.VIEWPORT_WIDTH, CONFIG.VIEWPORT_HEIGHT);
+        this.ctx = this.renderer.getContext();
         this.noiseCanvas.width = 256;
         this.noiseCanvas.height = 256;
         this.vignetteCanvas.width = CONFIG.VIEWPORT_WIDTH;
@@ -2919,7 +3020,9 @@ class Game {
     flashScreen() { this.flash = 10; }
     
     updateInventoryUI() {
-        let container = document.getElementById('inventory-container'); container.innerHTML = '';
+        let container = document.getElementById('inventory-container');
+        if (!container || !this.player) return;
+        container.innerHTML = '';
         for(let i=0; i<CONFIG.MAX_INVENTORY; i++) {
             let div = document.createElement('div'); div.className = 'inv-slot locked';
             const keySpan = document.createElement('span');
@@ -2974,6 +3077,7 @@ class Game {
         if (!wrap || !list || !confirm) return;
 
         this.selectedPerkId = options[0] ? options[0].id : null;
+        confirm.disabled = !this.selectedPerkId;
         list.innerHTML = '';
         for (let i = 0; i < options.length; i++) {
             const perk = options[i];
@@ -2986,7 +3090,7 @@ class Game {
                 const children = list.children;
                 for (let j = 0; j < children.length; j++) children[j].classList.remove('active');
                 btn.classList.add('active');
-                this.applySelectedPerk();
+                confirm.disabled = false;
             });
             list.appendChild(btn);
         }
@@ -3281,6 +3385,7 @@ class Game {
             this.ctx.globalAlpha = 1;
         }
         if (this.flash > 0) { this.ctx.fillStyle = `rgba(255,255,255,${this.flash/20})`; this.ctx.fillRect(0,0,this.canvas.width, this.canvas.height); this.flash--; }
+        if (this.renderer) this.renderer.present();
     }
 }
 
@@ -3308,6 +3413,8 @@ function openLobby(fromScreen) {
     document.getElementById('bot-count-val').innerText = CONFIG.BOT_COUNT;
     document.getElementById('frag-limit-input').value = CONFIG.WIN_LIMIT; 
     document.getElementById('frag-limit-val').innerText = CONFIG.WIN_LIMIT;
+    const modeSelect = document.getElementById('game-mode-select');
+    if (modeSelect) modeSelect.value = CONFIG.GAME_MODE;
     const cosmetics = { ...defaultCosmetics(), ...(gameInstance?.playerCosmetics || {}) };
     if (gameInstance) {
         gameInstance.playerCosmetics = { ...cosmetics };
@@ -3323,12 +3430,12 @@ function openLobby(fromScreen) {
 }
 
 function updateLobbyUI() {
-    const bots = parseInt(document.getElementById('bot-count-input').value);
-    const frags = parseInt(document.getElementById('frag-limit-input').value);
+    const bots = parseInt(document.getElementById('bot-count-input').value, 10);
+    const frags = parseInt(document.getElementById('frag-limit-input').value, 10);
     document.getElementById('bot-count-val').innerText = bots;
     document.getElementById('frag-limit-val').innerText = frags;
-    CONFIG.BOT_COUNT = bots;
-    CONFIG.WIN_LIMIT = frags;
+    CONFIG.BOT_COUNT = Number.isFinite(bots) ? bots : CONFIG.BOT_COUNT;
+    CONFIG.WIN_LIMIT = Number.isFinite(frags) ? frags : CONFIG.WIN_LIMIT;
     CONFIG.GAME_MODE = document.getElementById('game-mode-select').value;
 }
 
