@@ -130,7 +130,9 @@ class RenderBackend {
 
     init() {
         const hasPixi = typeof window !== 'undefined' && typeof window.PIXI !== 'undefined';
-        if (!hasPixi) {
+        const urlPixiParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('renderer') : null;
+        const pixiRequested = CONFIG.ENABLE_PIXI_RENDERER || urlPixiParam === 'pixi';
+        if (!hasPixi || !pixiRequested) {
             this.forceCanvasFallback();
             return;
         }
@@ -238,7 +240,8 @@ const CONFIG = {
     GAME_MODE: 'DM', // 'DM', 'TDM', 'CTF'
     CTF_RESPAWN_TIME: 1200, // 20 seconds * 60 fps
     SPATIAL_GRID_SIZE: 200,
-    COLLISION_BATCH_TICKS: 3
+    COLLISION_BATCH_TICKS: 3,
+    ENABLE_PIXI_RENDERER: false
 };
 
 const BOT_NAMES = [
@@ -2689,6 +2692,7 @@ class Game {
         this.canvas = document.getElementById('gameCanvas');
         this.renderer = new RenderBackend(this.canvas, CONFIG.VIEWPORT_WIDTH, CONFIG.VIEWPORT_HEIGHT);
         this.ctx = this.renderer.getContext();
+        this.renderMode = this.renderer.mode;
         this.camera = new Vector2(0, 0); this.shake = 0; this.flash = 0; this.tick = 0; this.gameState = 'MENU';
         this.paused = false;
         this.cameraTarget = null;
