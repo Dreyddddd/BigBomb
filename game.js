@@ -94,6 +94,7 @@ class SpatialGrid {
 }
 
 
+
 // --- 2. Константы ---
 const CONFIG = {
     GRAVITY: 0.1,
@@ -175,7 +176,13 @@ function getHeadImage(headId) {
         img.onload = () => {
             if (typeof updateLobbyPreview === 'function') updateLobbyPreview();
         };
-        img.src = `assets/images/heads/${headId}.png`;
+        img.onerror = () => {
+            if (!img._triedLowerCase) {
+                img._triedLowerCase = true;
+                img.src = `assets/images/heads/${headId}.png`;
+            }
+        };
+        img.src = `Assets/Images/Heads/${headId}.png`;
         headImageCache.set(headId, img);
     }
     return headImageCache.get(headId);
@@ -209,6 +216,23 @@ function getBootsImage() {
         bootsImage = img;
     }
     return bootsImage;
+}
+
+const weaponImageCache = new Map();
+function getWeaponImage(weaponType) {
+    if (!weaponType) return null;
+    if (!weaponImageCache.has(weaponType)) {
+        const img = new Image();
+        img.onerror = () => {
+            if (!img._triedFallback) {
+                img._triedFallback = true;
+                img.src = `Assets/Images/WeaponIcons/${weaponType}.jpg`;
+            }
+        };
+        img.src = `Assets/Images/Weapons/${weaponType}.png`;
+        weaponImageCache.set(weaponType, img);
+    }
+    return weaponImageCache.get(weaponType);
 }
 
 function defaultCosmetics() {
@@ -254,6 +278,10 @@ const WeaponType = {
     LASER:      { name: "Лазер", color: '#e74c3c', radius: 5, damage: 40, type: 'laser', cooldown: 80, chargeable: false },
     NUKE:       { name: "Ядерка", color: '#2c3e50', radius: 250, damage: 100, type: 'nuke', cooldown: 280, chargeable: true }
 };
+
+const PROJECTILE_HITSCAN_TYPES = new Set(['energy', 'blackhole', 'laser', 'highspeed', 'blaster', 'shotgun', 'rapid']);
+const PROJECTILE_FAST_RAYCAST_TYPES = new Set(['highspeed', 'laser']);
+const PROJECTILE_LIGHT_TRAIL_TYPES = new Set(['blaster', 'rapid']);
 
 const PERK_LIST = [
     { id: 'tenacity', name: 'Упорство', desc: '+10% к максимальному HP' },
@@ -401,13 +429,14 @@ class Particle {
     }
     update(game) {
         if (!this.active) return false;
-        
+
         if (this.type === 'blood' || this.type === 'chunk') {
             this.vel.y += CONFIG.GRAVITY;
-            this.pos = this.pos.add(this.vel);
+            this.pos.x += this.vel.x;
+            this.pos.y += this.vel.y;
             if (game.terrain.isSolid(this.pos.x, this.pos.y)) {
                 this.active = false;
-                let stainSize = this.type === 'chunk' ? 4 : 2;
+                const stainSize = this.type === 'chunk' ? 4 : 2;
                 game.terrain.drawStain(this.pos.x, this.pos.y, stainSize, this.color);
             }
             this.life--;
@@ -417,16 +446,30 @@ class Particle {
         if (game.blackHoles && game.blackHoles.length) {
             for (let i = 0; i < game.blackHoles.length; i++) {
                 const blackHole = game.blackHoles[i];
-                if (distSq(this.pos, blackHole.pos) < 250 * 250) {
-                    this.vel = this.vel.add(blackHole.pos.sub(this.pos).normalize().mult(1.5));
+                const dx = blackHole.pos.x - this.pos.x;
+                const dy = blackHole.pos.y - this.pos.y;
+                const dSq = dx * dx + dy * dy;
+                if (dSq < 250 * 250 && dSq > 0.0001) {
+                    const invMag = 1 / Math.sqrt(dSq);
+                    this.vel.x += dx * invMag * 1.5;
+                    this.vel.y += dy * invMag * 1.5;
                 }
             }
         }
-        this.pos = this.pos.add(this.vel);
-        if (this.type === 'fire') { this.vel.y -= 0.03; this.vel.x *= 0.95; this.size *= 0.95; }
-        else if (this.type === 'spark') { this.vel.y += 0.1; }
-        else if (this.type === 'glow') { this.vel = this.vel.mult(0.92); }
-        else { this.vel.y += 0.02; }
+        this.pos.x += this.vel.x;
+        this.pos.y += this.vel.y;
+        if (this.type === 'fire') {
+            this.vel.y -= 0.03;
+            this.vel.x *= 0.95;
+            this.size *= 0.95;
+        } else if (this.type === 'spark') {
+            this.vel.y += 0.1;
+        } else if (this.type === 'glow') {
+            this.vel.x *= 0.92;
+            this.vel.y *= 0.92;
+        } else {
+            this.vel.y += 0.02;
+        }
         this.life--;
         if (this.life <= 0) this.active = false;
         return this.active;
@@ -530,19 +573,21 @@ class BackgroundGenerator {
         });
     }
     draw(ctx, camera) {
-        this.layers.forEach(layer => {
-            let px = camera.x * layer.speedX;
-            let py = camera.y * layer.speedY;
-            let w = layer.canvas.width;
+        const cameraRight = camera.x + CONFIG.VIEWPORT_WIDTH;
+        const prevAlpha = ctx.globalAlpha;
+        for (let i = 0; i < this.layers.length; i++) {
+            const layer = this.layers[i];
+            const px = camera.x * layer.speedX;
+            const py = camera.y * layer.speedY;
+            const w = layer.canvas.width;
             let startX = -Math.floor(px % w);
             if (startX > 0) startX -= w;
-            ctx.save();
             ctx.globalAlpha = layer.alpha;
             ctx.drawImage(layer.canvas, startX, py);
-            if (startX + w < camera.x + CONFIG.VIEWPORT_WIDTH) ctx.drawImage(layer.canvas, startX + w, py);
-            if (startX + w * 2 < camera.x + CONFIG.VIEWPORT_WIDTH) ctx.drawImage(layer.canvas, startX + w * 2, py);
-            ctx.restore();
-        });
+            if (startX + w < cameraRight) ctx.drawImage(layer.canvas, startX + w, py);
+            if (startX + w * 2 < cameraRight) ctx.drawImage(layer.canvas, startX + w * 2, py);
+        }
+        ctx.globalAlpha = prevAlpha;
     }
 }
 
@@ -556,8 +601,9 @@ class Fire {
             game.particleSystem.emit(this.pos.clone(), pVel, 20 + Math.random()*20, colors[Math.floor(Math.random()*colors.length)], 'fire');
         }
         if (this.life % 30 === 0) {
+            const fireDamageRadiusSq = 20 * 20;
             game.forEachNearbyEntity(this.pos, 20, (e) => {
-                if (!e.dead && e.pos.dist(this.pos) < 20) {
+                if (!e.dead && distSq(e.pos, this.pos) < fireDamageRadiusSq) {
                     e.takeDamage(5, null, game, 'fire'); 
                     game.particleSystem.emit(e.pos.clone(), new Vector2(0,-1), 10, '#fff', 'spark');
                 }
@@ -580,25 +626,35 @@ class BlackHoleEffect {
         this.radius = radius; 
         this.angle = 0; 
         this.ownerId = ownerId; 
+        this.isBlackHoleEffect = true;
     }
     update(game) {
         this.life--; this.angle += 0.2;
+        const pullRadiusSq = 400 * 400;
+        const originX = this.pos.x;
+        const originY = this.pos.y;
         game.forEachNearbyEntity(this.pos, 400, (e) => {
-            if (!e.dead) {
-                const distSquared = distSq(this.pos, e.pos);
-                if (distSquared < 400 * 400) {
-                    const dist = Math.sqrt(distSquared);
-                    let force = 150 / (dist + 10);
-                    let pull = this.pos.sub(e.pos).normalize().mult(force);
-                    e.vel = e.vel.add(pull);
-                }
-            }
+            if (e.dead) return;
+            const dx = originX - e.pos.x;
+            const dy = originY - e.pos.y;
+            const dSq = dx * dx + dy * dy;
+            if (dSq <= 0.0001 || dSq >= pullRadiusSq) return;
+            const dist = Math.sqrt(dSq);
+            const force = 150 / (dist + 10);
+            const invDist = 1 / dist;
+            e.vel.x += dx * invDist * force;
+            e.vel.y += dy * invDist * force;
         });
-        game.crates.forEach(c => {
-            if (distSq(this.pos, c.pos) < 400 * 400) {
-                c.pos = c.pos.add(this.pos.sub(c.pos).normalize().mult(5));
-            }
-        });
+        for (let i = 0; i < game.crates.length; i++) {
+            const c = game.crates[i];
+            const dx = originX - c.pos.x;
+            const dy = originY - c.pos.y;
+            const dSq = dx * dx + dy * dy;
+            if (dSq <= 0.0001 || dSq >= pullRadiusSq) continue;
+            const invDist = 1 / Math.sqrt(dSq);
+            c.pos.x += dx * invDist * 5;
+            c.pos.y += dy * invDist * 5;
+        }
         if (game.particleSystem.activeCount < CONFIG.MAX_PARTICLES) {
             for(let i=0; i<2; i++) {
                 let a = Math.random() * Math.PI * 2;
@@ -613,9 +669,10 @@ class BlackHoleEffect {
             game.terrain.destroy(this.pos.x, this.pos.y, this.radius);
             game.shakeScreen(20); game.flashScreen();
             const blastEntities = game.getNearbyEntities(this.pos, this.radius);
+            const blastRadiusSq = this.radius * this.radius;
             for (let i = 0; i < blastEntities.length; i++) {
                 const ent = blastEntities[i];
-                if (this.pos.dist(ent.pos) < this.radius) ent.takeDamage(999, this.ownerId, game, 'blackhole'); 
+                if (distSq(this.pos, ent.pos) < blastRadiusSq) ent.takeDamage(999, this.ownerId, game, 'blackhole'); 
             }
         }
         return this.life > 0;
@@ -756,21 +813,27 @@ class Flag {
             if (this.carrier.dead) {
                 this.drop();
             } else {
-                this.pos = this.carrier.pos.clone().add(new Vector2(0, -30));
+                this.pos.x = this.carrier.pos.x;
+                this.pos.y = this.carrier.pos.y - 30;
                 
                 // -- CAPTURE LOGIC --
                 // If I am being carried, and my carrier is in THEIR base zone, they score.
-                const baseZoneRadius = 150;
-                let carrierTeamBasePos = null;
-                if (this.carrier.team === 1) carrierTeamBasePos = new Vector2(250, terrain.height - 400); // Blue Base
-                else if (this.carrier.team === 2) carrierTeamBasePos = new Vector2(game.terrain.width - 250, terrain.height - 400); // Red Base
+                const baseZoneRadiusSq = 150 * 150;
+                let baseX = null;
+                let baseY = terrain.height - 400;
+                if (this.carrier.team === 1) baseX = 250; // Blue Base
+                else if (this.carrier.team === 2) baseX = game.terrain.width - 250; // Red Base
                 
-                if (carrierTeamBasePos && this.carrier.pos.dist(carrierTeamBasePos) < baseZoneRadius) {
-                    // Check if their flag is at home
-                    let carriersFlag = game.flags.find(f => f.teamId === this.carrier.team);
-                    if (carriersFlag && carriersFlag.state === 'at_base') {
-                        game.scoreCapture(this.carrier.team);
-                        this.returnToBase(game);
+                if (baseX !== null) {
+                    const dx = this.carrier.pos.x - baseX;
+                    const dy = this.carrier.pos.y - baseY;
+                    if (dx * dx + dy * dy < baseZoneRadiusSq) {
+                        // Check if their flag is at home
+                        let carriersFlag = game.flags.find(f => f.teamId === this.carrier.team);
+                        if (carriersFlag && carriersFlag.state === 'at_base') {
+                            game.scoreCapture(this.carrier.team);
+                            this.returnToBase(game);
+                        }
                     }
                 }
             }
@@ -780,19 +843,18 @@ class Flag {
             if (this.dropTimer <= 0) this.returnToBase(game);
         }
 
-        entities.forEach(ent => {
-            if (ent.dead) return;
-            if (this.pos.dist(ent.pos) < 30) {
-                if (ent.team !== 0 && ent.team !== this.teamId) {
-                    if (this.state !== 'carried') {
-                        this.pickup(ent, game);
-                    }
-                } 
-                else if (ent.team === this.teamId) {
-                    if (this.state === 'dropped') {
-                        this.returnToBase(game);
-                    } 
+        const pickupRadiusSq = 30 * 30;
+        game.forEachNearbyEntity(this.pos, 30, (ent) => {
+            if (ent.dead || distSq(this.pos, ent.pos) >= pickupRadiusSq) return;
+            if (ent.team !== 0 && ent.team !== this.teamId) {
+                if (this.state !== 'carried') {
+                    this.pickup(ent, game);
                 }
+            } 
+            else if (ent.team === this.teamId) {
+                if (this.state === 'dropped') {
+                    this.returnToBase(game);
+                } 
             }
         });
     }
@@ -1058,15 +1120,19 @@ class Terrain {
             return;
         }
 
-        const regionData = this.ctx.getImageData(minX, minY, width, height).data;
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                const srcIndex = (y * width + x) * 4;
-                const destIndex = ((minY + y) * this.width + (minX + x)) * 4;
-                this.collisionData[destIndex] = regionData[srcIndex];
-                this.collisionData[destIndex + 1] = regionData[srcIndex + 1];
-                this.collisionData[destIndex + 2] = regionData[srcIndex + 2];
-                this.collisionData[destIndex + 3] = regionData[srcIndex + 3];
+        const TILE_SIZE = 256;
+        for (let ty = minY; ty < maxY; ty += TILE_SIZE) {
+            const tileH = Math.min(TILE_SIZE, maxY - ty);
+            for (let tx = minX; tx < maxX; tx += TILE_SIZE) {
+                const tileW = Math.min(TILE_SIZE, maxX - tx);
+                if (tileW <= 0 || tileH <= 0) continue;
+
+                const regionData = this.ctx.getImageData(tx, ty, tileW, tileH).data;
+                for (let y = 0; y < tileH; y++) {
+                    const srcRow = y * tileW * 4;
+                    const destRow = ((ty + y) * this.width + tx) * 4;
+                    this.collisionData.set(regionData.subarray(srcRow, srcRow + tileW * 4), destRow);
+                }
             }
         }
     }
@@ -1111,7 +1177,12 @@ class Terrain {
             this.ctx.globalCompositeOperation = 'source-atop';
             
             const dynamicCount = Math.floor(radius * (type === 'nuke' ? 1.6 : 0.9));
-            const count = type === 'nuke' ? Math.max(160, Math.min(320, dynamicCount)) : Math.max(40, Math.min(160, dynamicCount));
+            let count = type === 'nuke' ? Math.max(160, Math.min(320, dynamicCount)) : Math.max(40, Math.min(160, dynamicCount));
+            const perfLevel = (typeof gameInstance !== 'undefined' && gameInstance) ? (gameInstance.perfLevel || 0) : 0;
+            if (perfLevel > 0) {
+                const mult = perfLevel === 1 ? 0.7 : 0.45;
+                count = Math.max(type === 'nuke' ? 80 : 24, Math.floor(count * mult));
+            }
             for(let i=0; i<count; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const dist = radius * (0.85 + Math.random() * 0.3); 
@@ -1149,10 +1220,23 @@ class Terrain {
     }
     
     raycast(start, end) {
-        let dir = end.sub(start); let dist = dir.mag(); dir = dir.normalize(); let pos = start.clone();
-        for(let i=0; i<dist; i+=15) {
-            pos = pos.add(dir.mult(15));
-            if (this.isSolid(pos.x, pos.y)) return true;
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= 0.0001) return this.isSolid(start.x, start.y);
+
+        const stepSize = 15;
+        const invDist = 1 / dist;
+        const stepX = dx * invDist * stepSize;
+        const stepY = dy * invDist * stepSize;
+        const steps = Math.ceil(dist / stepSize);
+
+        let x = start.x;
+        let y = start.y;
+        for (let i = 0; i < steps; i++) {
+            x += stepX;
+            y += stepY;
+            if (this.isSolid(x, y)) return true;
         }
         return false;
     }
@@ -1178,7 +1262,7 @@ class Projectile {
         if (this.ownerCollisionGrace > 0) this.ownerCollisionGrace--;
         
         if (this.type.type === 'fire_droplet') {
-            this.pos = this.pos.add(this.vel); this.vel.y += CONFIG.GRAVITY; 
+            this.pos.x += this.vel.x; this.pos.y += this.vel.y; this.vel.y += CONFIG.GRAVITY; 
             if (game.tick % 5 === 0) {
                 this.trail.push(this.pos.clone());
                 if (this.trail.length > 5) this.trail.shift();
@@ -1192,14 +1276,12 @@ class Projectile {
         if (this.type.type === 'homing') {
             let nearest = null;
             let minDSq = 400 * 400;
-            const candidates = game.getNearbyEntities(this.pos, 400);
-            for (let i = 0; i < candidates.length; i++) {
-                const e = candidates[i];
-                if (e.id === this.ownerId || e.dead) continue;
-                if (CONFIG.GAME_MODE !== 'DM' && e.team === this.team) continue;
+            game.forEachNearbyEntity(this.pos, 400, (e) => {
+                if (e.id === this.ownerId || e.dead) return;
+                if (CONFIG.GAME_MODE !== 'DM' && e.team === this.team) return;
                 const d = distSq(this.pos, e.pos);
                 if (d < minDSq) { minDSq = d; nearest = e; }
-            }
+            });
             if (nearest) {
                 let dir = nearest.pos.sub(this.pos).normalize().mult(0.3);
                 this.vel = this.vel.add(dir);
@@ -1209,7 +1291,7 @@ class Projectile {
 
         let trailStride = 3;
         let maxTrail = 10;
-        if (this.type.type === 'blaster' || this.type.type === 'rapid') {
+        if (PROJECTILE_LIGHT_TRAIL_TYPES.has(this.type.type)) {
             trailStride = 8;
             maxTrail = 0;
         } else if (this.type.type === 'shotgun') {
@@ -1221,7 +1303,7 @@ class Projectile {
             if (this.trail.length > maxTrail) this.trail.shift();
         }
 
-        if (this.type.type !== 'energy' && this.type.type !== 'blackhole' && this.type.type !== 'laser' && this.type.type !== 'highspeed' && this.type.type !== 'blaster' && this.type.type !== 'shotgun' && this.type.type !== 'rapid') {
+        if (!PROJECTILE_HITSCAN_TYPES.has(this.type.type)) {
              this.vel = this.vel.mult(CONFIG.PROJECTILE_DRAG);
              this.vel.y += CONFIG.PROJECTILE_GRAVITY;
         } else if (this.type.type === 'blackhole') {
@@ -1239,7 +1321,7 @@ class Projectile {
 
         const speed = this.vel.mag();
         let raycastStride = 3;
-        if (this.type.type === 'highspeed' || this.type.type === 'laser' || speed > 10) {
+        if (PROJECTILE_FAST_RAYCAST_TYPES.has(this.type.type) || speed > 10) {
             raycastStride = 1;
         } else if (speed > 6) {
             raycastStride = 2;
@@ -1251,8 +1333,11 @@ class Projectile {
         
         // Check against terrain first to prevent shooting through walls
         let hitWall = shouldRaycast ? terrain.raycast(this.pos, nextPos) : false;
-        const segmentMid = this.pos.add(nextPos).mult(0.5);
-        const segmentRadius = Math.max(60, this.pos.dist(nextPos) / 2 + 30);
+        const segmentDx = nextPos.x - this.pos.x;
+        const segmentDy = nextPos.y - this.pos.y;
+        const segmentMid = new Vector2((this.pos.x + nextPos.x) * 0.5, (this.pos.y + nextPos.y) * 0.5);
+        const segmentLen = Math.sqrt(segmentDx * segmentDx + segmentDy * segmentDy);
+        const segmentRadius = Math.max(60, segmentLen * 0.5 + 30);
         const shouldCheckEntities = !(this.type.type === 'blaster' || this.type.type === 'rapid') || (game.tick + this.ownerId) % 2 === 0;
         
         if (shouldCheckEntities) {
@@ -1267,7 +1352,7 @@ class Projectile {
                 let hitRadius = this.type.type === 'laser' ? 10 : Math.max(ent.size.x * 0.5, ent.size.y * 0.5);
                 if (ent.colliderTop !== undefined && ent.colliderBottom !== undefined && ent.colliderHalfWidth !== undefined) {
                     const verticalShift = (ent.colliderTop - ent.colliderBottom) * 0.35;
-                    collisionCenter = ent.pos.add(new Vector2(0, -verticalShift));
+                    collisionCenter = { x: ent.pos.x, y: ent.pos.y - verticalShift };
                     hitRadius = Math.max(ent.colliderHalfWidth + 3, (ent.colliderTop + ent.colliderBottom) * 0.5);
                 }
                 let distToTrajectory = distToSegmentSquared(collisionCenter, this.pos, nextPos);
@@ -1405,6 +1490,11 @@ class Projectile {
              let fireCount = this.type.burn || 10;
              const owner = game.getEntityById(this.ownerId);
              if (owner && owner.perkModifiers) fireCount += owner.perkModifiers.fireTrailBonus;
+             const perf = game ? (game.perfLevel || 0) : 0;
+             if (perf > 0) {
+                 const mult = perf === 1 ? 0.7 : 0.45;
+                 fireCount = Math.max(3, Math.floor(fireCount * mult));
+             }
              for(let i=0; i<fireCount; i++) {
                  let v = new Vector2((Math.random()-0.5)*8, -2 - Math.random()*5);
                  let p = new Projectile(this.pos.clone().add(new Vector2(0,-5)), v, {type: 'fire_droplet', color: '#e67e22'}, this.ownerId);
@@ -1417,7 +1507,9 @@ class Projectile {
         }
 
         if (this.type.type === 'nuke') {
-            for(let i=0; i<50; i++) {
+            const perf = game ? (game.perfLevel || 0) : 0;
+            const nukeParticleCount = perf === 0 ? 50 : (perf === 1 ? 30 : 16);
+            for(let i=0; i<nukeParticleCount; i++) {
                 let v = new Vector2((Math.random()-0.5)*15, -Math.random()*20);
                 game.particleSystem.emit(this.pos.clone(), v, 100 + Math.random()*50, '#f1c40f', 'fire');
             }
@@ -1783,8 +1875,11 @@ class Character {
             // CTF Respawn Timer (20 sec)
             if (CONFIG.GAME_MODE === 'CTF') this.respawnTimer = CONFIG.CTF_RESPAWN_TIME;
 
-            for(let i=0; i<30; i++) game.particleSystem.emit(this.pos.clone(), new Vector2((Math.random()-0.5)*5, (Math.random()-0.5)*5), 60, '#8a0303', 'blood');
-            for(let i=0; i<6; i++) game.particleSystem.emit(this.pos.clone(), new Vector2((Math.random()-0.5)*6, -Math.random()*6), 100, '#660000', 'chunk');
+            const perf = game ? (game.perfLevel || 0) : 0;
+            const bloodCount = perf === 0 ? 30 : (perf === 1 ? 18 : 10);
+            const chunkCount = perf === 0 ? 6 : (perf === 1 ? 4 : 2);
+            for(let i=0; i<bloodCount; i++) game.particleSystem.emit(this.pos.clone(), new Vector2((Math.random()-0.5)*5, (Math.random()-0.5)*5), 60, '#8a0303', 'blood');
+            for(let i=0; i<chunkCount; i++) game.particleSystem.emit(this.pos.clone(), new Vector2((Math.random()-0.5)*6, -Math.random()*6), 100, '#660000', 'chunk');
 
             if (attackerId !== undefined && attackerId !== null && attackerId !== this.id) {
                 let killer = game.getEntityById(attackerId);
@@ -1836,32 +1931,38 @@ class Character {
              game.checkWinCondition();
         }
 
-        game.effects.forEach(e => {
-            if(e instanceof BlackHoleEffect && this.pos.dist(e.pos) < 400) {
-                let pull = e.pos.sub(this.pos).normalize().mult((200/(this.pos.dist(e.pos)+10))*0.05 * this.perkModifiers.blackholePull);
-                this.vel = this.vel.add(pull);
-            }
-        });
+        const blackHoleRadiusSq = 400 * 400;
+        for (let i = 0; i < game.effects.length; i++) {
+            const e = game.effects[i];
+            if (!e || !e.isBlackHoleEffect) continue;
+            const dSq = distSq(this.pos, e.pos);
+            if (dSq >= blackHoleRadiusSq) continue;
+            const dist = Math.sqrt(dSq);
+            const dir = e.pos.sub(this.pos).normalize();
+            const force = (200 / (dist + 10)) * 0.05 * this.perkModifiers.blackholePull;
+            this.vel = this.vel.add(dir.mult(force));
+        }
 
-        crates.forEach(c => {
-            if (c.active && this.pos.dist(c.pos) < 25) {
-                if (c.isMedkit) this.hp = Math.min(this.getMaxHp(), this.hp + 40 * (this.hasPerk('tenacity') ? 1.15 : 1));
-                else if (c.crateType === 'powerup') this.applyBuff(c.content);
-                else if (c.content) { 
-                        if (!this.inventory.find(w => w.name === c.content.name)) {
-                            if (this.inventory.length < CONFIG.MAX_INVENTORY) {
-                                this.inventory.push({...c.content});
-                                this.switchWeapon(this.inventory.length - 1);
-                            } else {
-                                this.inventory[this.weaponIndex] = {...c.content};
-                                this.weapon = this.inventory[this.weaponIndex];
-                            }
-                            if(this === game.player) game.updateInventoryUI();
-                        }
+        const cratePickupRadiusSq = 25 * 25;
+        for (let i = 0; i < crates.length; i++) {
+            const c = crates[i];
+            if (!c.active || distSq(this.pos, c.pos) >= cratePickupRadiusSq) continue;
+            if (c.isMedkit) this.hp = Math.min(this.getMaxHp(), this.hp + 40 * (this.hasPerk('tenacity') ? 1.15 : 1));
+            else if (c.crateType === 'powerup') this.applyBuff(c.content);
+            else if (c.content) {
+                if (!this.inventory.find(w => w.name === c.content.name)) {
+                    if (this.inventory.length < CONFIG.MAX_INVENTORY) {
+                        this.inventory.push({...c.content});
+                        this.switchWeapon(this.inventory.length - 1);
+                    } else {
+                        this.inventory[this.weaponIndex] = {...c.content};
+                        this.weapon = this.inventory[this.weaponIndex];
+                    }
+                    if(this === game.player) game.updateInventoryUI();
                 }
-                c.active = false;
             }
-        });
+            c.active = false;
+        }
 
         let targetSpeed = 0;
         let maxSpeed = CONFIG.MAX_SPEED * this.speedMultiplier * this.perkModifiers.speed;
@@ -2003,7 +2104,8 @@ class Character {
         ctx.translate(this.pos.x, this.pos.y);
 
         const aimFacingRight = (this.input.aimTarget.x - this.pos.x) >= 0;
-        this.buffs.forEach(buff => {
+        for (let b = 0; b < this.buffs.length; b++) {
+            const buff = this.buffs[b];
             if (buff.type === 'shield') {
                 ctx.save();
                 ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 2;
@@ -2032,7 +2134,7 @@ class Character {
                    ctx.fillRect(aimFacingRight ? -25 : 15, 0, 10, 2);
                 }
             }
-        });
+        }
 
         // Name
         let nameColor = 'white';
@@ -2112,13 +2214,102 @@ class Character {
         if (!this.facingRight) aimX = -aimX;
         let angle = Math.atan2(aimY, aimX);
 
+        const shoulderY = -7;
+        const handTone = '#f3c7a6';
+        const armDark = '#b68261';
+
+        const drawArmSegment = (fromX, fromY, toX, toY, width, color, outline) => {
+            const dx = toX - fromX;
+            const dy = toY - fromY;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+            const nx = -dy / len;
+            const ny = dx / len;
+            const hw = width * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(fromX + nx * hw, fromY + ny * hw);
+            ctx.lineTo(fromX - nx * hw, fromY - ny * hw);
+            ctx.lineTo(toX - nx * hw, toY - ny * hw);
+            ctx.lineTo(toX + nx * hw, toY + ny * hw);
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = outline;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        };
+
+        const drawDetailedHand = (x, y, scale = 1, grip = false) => {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+            ctx.fillStyle = handTone;
+            ctx.strokeStyle = armDark;
+            ctx.lineWidth = 1;
+
+            ctx.beginPath();
+            ctx.roundRect(-3, -2.5, 6, 5, 2.2);
+            ctx.fill();
+            ctx.stroke();
+
+            if (grip) {
+                for (let i = 0; i < 3; i++) {
+                    const fx = -1.5 + i * 1.9;
+                    ctx.beginPath();
+                    ctx.moveTo(fx, 1.5);
+                    ctx.lineTo(fx + 0.6, 3.2);
+                    ctx.stroke();
+                }
+            }
+
+            ctx.fillStyle = '#e4b393';
+            ctx.beginPath();
+            ctx.ellipse(-3.3, -0.1, 1.1, 1.6, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        };
+
+        const frontShoulderX = -6;
+        const frontElbowX = frontShoulderX + Math.cos(angle) * 8.2;
+        const frontElbowY = shoulderY + 1.2 + Math.sin(angle) * 8.2;
+        const frontHandX = frontShoulderX + Math.cos(angle) * 14.5 - Math.sin(angle) * 0.8;
+        const frontHandY = shoulderY + 2.0 + Math.sin(angle) * 14.5 + Math.cos(angle) * 0.8;
+
+        const supportShoulderX = -4;
+        const supportElbowX = supportShoulderX + Math.cos(angle) * 7.8 - Math.sin(angle) * 2.4;
+        const supportElbowY = shoulderY + 4 + Math.sin(angle) * 7.8 + Math.cos(angle) * 2.4;
+        const supportHandX = frontHandX + Math.cos(angle) * 7.2 - Math.sin(angle) * 3.0;
+        const supportHandY = frontHandY + 1.2 + Math.sin(angle) * 7.2 + Math.cos(angle) * 3.0;
+
+        // Back/support arm under weapon
+        drawArmSegment(supportShoulderX, shoulderY + 2, supportElbowX, supportElbowY, 5.8, '#a97052', '#5a3d2d');
+        drawArmSegment(supportElbowX, supportElbowY, supportHandX, supportHandY, 5.4, '#be8968', '#5a3d2d');
+        drawDetailedHand(supportHandX, supportHandY, 0.95, true);
+
+        // Weapon sprite in hand (larger and aligned with grip)
         ctx.save();
-        ctx.translate(0, -4); ctx.rotate(angle);
-        ctx.fillStyle = this.weapon.color;
-        WeaponArt[this.weapon.type] ? WeaponArt[this.weapon.type](ctx) : ctx.fillRect(0, -2, 12, 4);
-        ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI*2); ctx.fill(); 
-        ctx.beginPath(); ctx.arc(8, 2, 2.5, 0, Math.PI*2); ctx.fill(); 
+        const weaponPivotX = frontHandX - 3.8;
+        const weaponPivotY = frontHandY + 1.6;
+        ctx.translate(weaponPivotX, weaponPivotY);
+        ctx.rotate(angle);
+        const weaponImg = getWeaponImage(this.weapon.type);
+        if (weaponImg && weaponImg.complete && weaponImg.naturalWidth > 0) {
+            const weaponW = 50;
+            const weaponH = 25;
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(weaponImg, -8, -weaponH * 0.5, weaponW, weaponH);
+            ctx.restore();
+        } else {
+            ctx.fillStyle = this.weapon.color;
+            ctx.scale(1.3, 1.3);
+            WeaponArt[this.weapon.type] ? WeaponArt[this.weapon.type](ctx) : ctx.fillRect(0, -2, 12, 4);
+        }
         ctx.restore();
+
+        // Front arm gripping weapon
+        drawArmSegment(frontShoulderX, shoulderY, frontElbowX, frontElbowY, 6.4, '#c88f6d', '#6a4634');
+        drawArmSegment(frontElbowX, frontElbowY, frontHandX, frontHandY, 5.8, '#d39a77', '#6a4634');
+        drawDetailedHand(frontHandX, frontHandY, 1.0, true);
 
         if (this.isCharging) {
             let c = Math.floor((this.charge/CONFIG.MAX_CHARGE)*255);
@@ -2158,7 +2349,7 @@ class Bot extends Character {
 
         // Anti-Camping Check (Every 4 seconds approx)
         if (this.campingTimer > 240) {
-            if (this.pos.dist(this.lastSectorPos) < 200) {
+            if (distSq(this.pos, this.lastSectorPos) < 200 * 200) {
                 // Forced Move
                 this.roamSpot = new Vector2(Math.random()*CONFIG.WORLD_WIDTH, Math.random() * (CONFIG.WORLD_HEIGHT - 300));
                 this.currentTarget = { pos: this.roamSpot, isStatic: true };
@@ -2205,15 +2396,15 @@ class Bot extends Character {
         }
         this.input.aimTarget = aimPoint;
 
-        let dist = Math.sqrt(distSq(this.pos, targetPos));
+        let distSqToTarget = distSq(this.pos, targetPos);
         
         // Movement Logic
         // If enemy is too close, maybe move AWAY?
-        if (closeEnemy && dist < 150) {
+        if (closeEnemy && distSqToTarget < 150 * 150) {
              // Retreat logic: Move away from enemy
              if (targetPos.x > this.pos.x) { this.input.right = false; this.input.left = true; } // Enemy right, go left
              else { this.input.right = true; this.input.left = false; } // Enemy left, go right
-        } else if (dist > 50) {
+        } else if (distSqToTarget > 50 * 50) {
             if (targetPos.x > this.pos.x + 20) { this.input.right = true; this.input.left = false; }
             else if (targetPos.x < this.pos.x - 20) { this.input.right = false; this.input.left = true; }
             else { this.input.right = false; this.input.left = false; }
@@ -2263,14 +2454,14 @@ class Bot extends Character {
         
         // Combat Logic
         if (this.currentTarget instanceof Character && !this.currentTarget.dead) {
-            let enemyDist = Math.sqrt(distSq(this.pos, this.currentTarget.pos));
+            let enemyDistSq = distSq(this.pos, this.currentTarget.pos);
             // Don't shoot self if wall is close unless stuck
             let wallFace = terrain.isSolid(this.pos.x + (this.facingRight?20:-20), this.pos.y);
             
-            if (enemyDist < 700 && (!wallFace || this.stuckTimer > 30)) {
+            if (enemyDistSq < 700 * 700 && (!wallFace || this.stuckTimer > 30)) {
                  this.input.shoot = true;
                  // Add inaccuracy based on distance
-                 let jitter = (enemyDist / 100) * 5;
+                 let jitter = (Math.sqrt(enemyDistSq) / 100) * 5;
                  this.input.aimTarget = this.currentTarget.pos.add(new Vector2((Math.random()-0.5)*jitter, (Math.random()-0.5)*jitter)); 
             } else {
                  this.input.shoot = false;
@@ -2314,7 +2505,7 @@ class Bot extends Character {
                  }
              }
              // Only go if it's reasonably close (don't cross entire map just for loot if fighting)
-             if (nearestCrate && Math.sqrt(nearestCrateDist) < 800) {
+             if (nearestCrate && nearestCrateDist < 800 * 800) {
                  this.currentTarget = { pos: nearestCrate.pos, isStatic: true };
                  return;
              }
@@ -2378,7 +2569,7 @@ class Bot extends Character {
                      this.currentTarget = nearestEnemy;
                  } else {
                      // Roam
-                     if (!this.roamSpot || Math.sqrt(distSq(this.pos, this.roamSpot)) < 100 || this.decisionTimer < -200) {
+                     if (!this.roamSpot || distSq(this.pos, this.roamSpot) < 100 * 100 || this.decisionTimer < -200) {
                          this.roamSpot = new Vector2(Math.random()*CONFIG.WORLD_WIDTH, Math.random() * (CONFIG.WORLD_HEIGHT - 300));
                          this.decisionTimer = 300;
                      }
@@ -2391,12 +2582,14 @@ class Bot extends Character {
 
 class Game {
     constructor() {
-        this.canvas = document.getElementById('gameCanvas'); this.ctx = this.canvas.getContext('2d');
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
         this.camera = new Vector2(0, 0); this.shake = 0; this.flash = 0; this.tick = 0; this.gameState = 'MENU';
         this.paused = false;
         this.cameraTarget = null;
         this.statsVisible = false;
         this.statsDirty = true;
+        this.lastStatsRenderTick = -9999;
         this.input = { keys: {}, mouse: { screenPos: new Vector2(CONFIG.VIEWPORT_WIDTH/2, CONFIG.VIEWPORT_HEIGHT/2), worldPos: new Vector2(0,0), down: false } };
         this.aliveEntities = [];
         this.activeCrates = [];
@@ -2422,6 +2615,8 @@ class Game {
         
         this.roundOver = false;
         this.lastHpUiValue = -1;
+        this.perfLevel = 0;
+        this.maxProjectiles = 650;
         this.dom = {
             hpDisplay: document.getElementById('hp-display'),
             statsBody: document.getElementById('stats-body'),
@@ -2468,7 +2663,8 @@ class Game {
         }
         this.resize();
 
-        requestAnimationFrame((t) => this.loop(t));
+        this.loop = this.loop.bind(this);
+        requestAnimationFrame(this.loop);
     }
 
     resize() {
@@ -2585,7 +2781,7 @@ class Game {
         
         if (this.dom.scoreBlue) this.dom.scoreBlue.innerText = "0";
         if (this.dom.scoreRed) this.dom.scoreRed.innerText = "0";
-        
+
         this.updateInventoryUI();
     }
     
@@ -2657,7 +2853,7 @@ class Game {
         this.crates = [];
         for(let i=0; i<8; i++) this.spawnCrate();
 
-        this.entities.forEach(ent => this.respawnEntity(ent));
+        for (let i = 0; i < this.entities.length; i++) this.respawnEntity(this.entities[i]);
         this.projectiles = [];
         this.fires = [];
         this.effects = [];
@@ -2716,13 +2912,13 @@ class Game {
         const timer = this.dom.ctfRespawnTimer;
         if (!timer) return;
         if (CONFIG.GAME_MODE === 'CTF' && this.player && this.player.dead) {
-             timer.style.display = 'block';
+             if (timer.style.display !== 'block') timer.style.display = 'block';
              const respawnVal = this.dom.respawnTimeVal;
              if (respawnVal) {
                  respawnVal.innerText = Math.ceil(this.player.respawnTimer / 60);
              }
         } else {
-             timer.style.display = 'none';
+             if (timer.style.display !== 'none') timer.style.display = 'none';
         }
     }
 
@@ -2748,7 +2944,9 @@ class Game {
     flashScreen() { this.flash = 10; }
     
     updateInventoryUI() {
-        let container = document.getElementById('inventory-container'); container.innerHTML = '';
+        let container = document.getElementById('inventory-container');
+        if (!container || !this.player) return;
+        container.innerHTML = '';
         for(let i=0; i<CONFIG.MAX_INVENTORY; i++) {
             let div = document.createElement('div'); div.className = 'inv-slot locked';
             const keySpan = document.createElement('span');
@@ -2803,6 +3001,7 @@ class Game {
         if (!wrap || !list || !confirm) return;
 
         this.selectedPerkId = options[0] ? options[0].id : null;
+        confirm.disabled = !this.selectedPerkId;
         list.innerHTML = '';
         for (let i = 0; i < options.length; i++) {
             const perk = options[i];
@@ -2815,7 +3014,7 @@ class Game {
                 const children = list.children;
                 for (let j = 0; j < children.length; j++) children[j].classList.remove('active');
                 btn.classList.add('active');
-                this.applySelectedPerk();
+                confirm.disabled = false;
             });
             list.appendChild(btn);
         }
@@ -2844,7 +3043,7 @@ class Game {
         } catch (err) {
             console.error('Game loop error:', err);
         } finally {
-            requestAnimationFrame(() => this.loop());
+            requestAnimationFrame(this.loop);
         }
     }
 
@@ -2857,6 +3056,12 @@ class Game {
 
         this.input.mouse.worldPos = this.input.mouse.screenPos.add(this.camera);
         this.updateWaveRespawn();
+
+        if (this.projectiles.length > this.maxProjectiles) {
+            this.projectiles.splice(0, this.projectiles.length - this.maxProjectiles);
+        }
+        const projectileCount = this.projectiles.length;
+        this.perfLevel = projectileCount > 300 ? 2 : (projectileCount > 170 ? 1 : 0);
 
         this.aliveEntities.length = 0;
         this.entityById.clear();
@@ -2925,8 +3130,8 @@ class Game {
             this.player.input.aimTarget = this.input.mouse.worldPos;
         }
         
-        const aiStride = Math.max(1, Math.floor(this.aliveEntities.length / 12));
-        const farBotUpdateStride = this.aliveEntities.length > 24 ? 2 : 1;
+        const aiStride = Math.max(1, Math.ceil(this.aliveEntities.length / 8));
+        const farBotUpdateStride = this.aliveEntities.length > 24 ? 3 : (this.aliveEntities.length > 14 ? 2 : 1);
         const farBotDistSq = 1400 * 1400;
         for (let i = 0; i < this.entities.length; i++) {
             const ent = this.entities[i];
@@ -2949,7 +3154,10 @@ class Game {
         
         for (let i = 0; i < this.crates.length; i++) this.crates[i].update(this.terrain);
         for (let i = 0; i < this.flags.length; i++) this.flags[i].update(this.terrain, this.entities, this);
-        const projectileFarStride = this.projectiles.length > 180 ? 2 : 1;
+        let projectileFarStride = 1;
+        if (this.projectiles.length > 120) projectileFarStride = 2;
+        if (this.projectiles.length > 220) projectileFarStride = 3;
+        if (this.projectiles.length > 320) projectileFarStride = 4;
         const projectileFarDistSq = 1700 * 1700;
         for (let i = this.projectiles.length - 1; i >= 0; i--) { 
             let p = this.projectiles[i];
@@ -2964,7 +3172,8 @@ class Game {
                 this.projectiles.pop();
             }
         }
-        if (this.tick % CONFIG.COLLISION_BATCH_TICKS === 0) {
+        const collisionFlushStride = this.perfLevel === 0 ? CONFIG.COLLISION_BATCH_TICKS : (this.perfLevel === 1 ? 5 : 7);
+        if (this.tick % collisionFlushStride === 0) {
             this.terrain.flushCollisionUpdates();
         }
         for (let i = this.fires.length - 1; i >= 0; i--) {
@@ -2984,7 +3193,7 @@ class Game {
         this.blackHoles.length = 0;
         for (let i = 0; i < this.effects.length; i++) {
             const effect = this.effects[i];
-            if (effect instanceof BlackHoleEffect) this.blackHoles.push(effect);
+            if (effect && effect.isBlackHoleEffect) this.blackHoles.push(effect);
         }
         
         // CAMERA LOGIC WITH MOUSE OFFSET
@@ -3011,17 +3220,20 @@ class Game {
             }
         }
         
-        if (this.statsVisible && (this.statsDirty || this.tick % 20 === 0)) {
+        const STATS_RENDER_INTERVAL = 30;
+        if (this.statsVisible && (this.statsDirty || this.tick - this.lastStatsRenderTick >= STATS_RENDER_INTERVAL)) {
             let html = '';
             const sortedEntities = [...this.entities].sort((a,b)=>b.kills-a.kills);
-            sortedEntities.forEach(e => {
+            for (let i = 0; i < sortedEntities.length; i++) {
+                const e = sortedEntities[i];
                 let cls = e.team === 1 ? 'row-blue' : (e.team === 2 ? 'row-red' : '');
                 if (e === this.player) cls += ' row-me';
                 html += `<tr class="${cls}"><td>${e.name}</td><td>${e.kills}</td><td>${e.deaths}</td><td>${TEAMS[e.team].name}</td></tr>`;
-            });
+            }
             const statsBody = this.dom.statsBody;
             if (statsBody) statsBody.innerHTML = html;
             this.statsDirty = false;
+            this.lastStatsRenderTick = this.tick;
         }
         const hpDisplay = this.dom.hpDisplay;
         if (hpDisplay && this.player) {
@@ -3034,9 +3246,21 @@ class Game {
     }
 
     draw() {
-        this.ctx.fillStyle = '#000'; this.ctx.fillRect(0,0,this.canvas.width, this.canvas.height);
-        
+        const viewCanvas = this.ctx && this.ctx.canvas ? this.ctx.canvas : this.canvas;
+        const viewWidth = viewCanvas.width;
+        const viewHeight = viewCanvas.height;
+        this.ctx.fillStyle = '#000'; this.ctx.fillRect(0,0,viewWidth, viewHeight);
+
         if (!this.terrain) return;
+        if (!Number.isFinite(this.camera.x) || !Number.isFinite(this.camera.y)) {
+            if (this.player && this.player.pos) {
+                this.camera.x = Math.max(0, Math.min(this.player.pos.x - viewWidth / 2, CONFIG.WORLD_WIDTH - viewWidth));
+                this.camera.y = Math.max(0, Math.min(this.player.pos.y - viewHeight / 2, CONFIG.WORLD_HEIGHT - viewHeight));
+            } else {
+                this.camera.x = 0;
+                this.camera.y = 0;
+            }
+        }
 
         this.ctx.save();
         this.ctx.translate(-Math.floor(this.camera.x), -Math.floor(this.camera.y));
@@ -3047,8 +3271,8 @@ class Game {
         // Calculate the slice of terrain canvas to draw based on camera
         // Note: The context is already translated by -camera.x, -camera.y.
         // So drawing at (camera.x, camera.y) in world coordinates maps to (0,0) on screen.
-        let vw = this.canvas.width;
-        let vh = this.canvas.height;
+        let vw = viewWidth;
+        let vh = viewHeight;
         let sx = Math.max(0, Math.floor(this.camera.x));
         let sy = Math.max(0, Math.floor(this.camera.y));
         let sw = Math.min(vw, this.terrain.width - sx);
@@ -3060,19 +3284,25 @@ class Game {
         }
 
         const viewLeft = this.camera.x - 200;
-        const viewRight = this.camera.x + CONFIG.VIEWPORT_WIDTH + 200;
+        const viewRight = this.camera.x + viewWidth + 200;
         const viewTop = this.camera.y - 200;
-        const viewBottom = this.camera.y + CONFIG.VIEWPORT_HEIGHT + 200;
+        const viewBottom = this.camera.y + viewHeight + 200;
         const inView = (obj) => obj && obj.pos &&
             obj.pos.x >= viewLeft && obj.pos.x <= viewRight &&
             obj.pos.y >= viewTop && obj.pos.y <= viewBottom;
 
-        for (let i = 0; i < this.bases.length; i++) this.bases[i].draw(this.ctx);
-        for (let i = 0; i < this.flags.length; i++) this.flags[i].draw(this.ctx);
-        for (let i = 0; i < this.crates.length; i++) { const c = this.crates[i]; if (inView(c)) c.draw(this.ctx); }
+        for (let i = 0; i < this.bases.length; i++) { const b = this.bases[i]; if (inView(b)) b.draw(this.ctx); }
+        for (let i = 0; i < this.flags.length; i++) { const f = this.flags[i]; if (inView(f)) f.draw(this.ctx); }
+        for (let i = 0; i < this.crates.length; i++) {
+            const c = this.crates[i];
+            if (c.active && inView(c)) c.draw(this.ctx);
+        }
         for (let i = 0; i < this.fires.length; i++) { const f = this.fires[i]; if (inView(f)) f.draw(this.ctx); }
         for (let i = 0; i < this.effects.length; i++) { const f = this.effects[i]; if (inView(f)) f.draw(this.ctx); else if (!f.pos) f.draw(this.ctx); }
-        for (let i = 0; i < this.entities.length; i++) { const e = this.entities[i]; if (inView(e)) e.draw(this.ctx); }
+        for (let i = 0; i < this.entities.length; i++) {
+            const e = this.entities[i];
+            if (!e.dead && inView(e)) e.draw(this.ctx);
+        }
         for (let i = 0; i < this.projectiles.length; i++) {
             const p = this.projectiles[i];
             if (inView(p)) p.draw(this.ctx);
@@ -3093,10 +3323,10 @@ class Game {
         if (this.noisePattern) {
             this.ctx.globalAlpha = 0.04;
             this.ctx.fillStyle = this.noisePattern;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.fillRect(0, 0, viewWidth, viewHeight);
             this.ctx.globalAlpha = 1;
         }
-        if (this.flash > 0) { this.ctx.fillStyle = `rgba(255,255,255,${this.flash/20})`; this.ctx.fillRect(0,0,this.canvas.width, this.canvas.height); this.flash--; }
+        if (this.flash > 0) { this.ctx.fillStyle = `rgba(255,255,255,${this.flash/20})`; this.ctx.fillRect(0,0,viewWidth, viewHeight); this.flash--; }
     }
 }
 
@@ -3124,6 +3354,8 @@ function openLobby(fromScreen) {
     document.getElementById('bot-count-val').innerText = CONFIG.BOT_COUNT;
     document.getElementById('frag-limit-input').value = CONFIG.WIN_LIMIT; 
     document.getElementById('frag-limit-val').innerText = CONFIG.WIN_LIMIT;
+    const modeSelect = document.getElementById('game-mode-select');
+    if (modeSelect) modeSelect.value = CONFIG.GAME_MODE;
     const cosmetics = { ...defaultCosmetics(), ...(gameInstance?.playerCosmetics || {}) };
     if (gameInstance) {
         gameInstance.playerCosmetics = { ...cosmetics };
@@ -3139,12 +3371,12 @@ function openLobby(fromScreen) {
 }
 
 function updateLobbyUI() {
-    const bots = parseInt(document.getElementById('bot-count-input').value);
-    const frags = parseInt(document.getElementById('frag-limit-input').value);
+    const bots = parseInt(document.getElementById('bot-count-input').value, 10);
+    const frags = parseInt(document.getElementById('frag-limit-input').value, 10);
     document.getElementById('bot-count-val').innerText = bots;
     document.getElementById('frag-limit-val').innerText = frags;
-    CONFIG.BOT_COUNT = bots;
-    CONFIG.WIN_LIMIT = frags;
+    CONFIG.BOT_COUNT = Number.isFinite(bots) ? bots : CONFIG.BOT_COUNT;
+    CONFIG.WIN_LIMIT = Number.isFinite(frags) ? frags : CONFIG.WIN_LIMIT;
     CONFIG.GAME_MODE = document.getElementById('game-mode-select').value;
 }
 
@@ -3173,7 +3405,16 @@ function startGameFromLobby() {
     const lobbyName = document.getElementById('lobby-nickname-input');
     const startName = document.getElementById('nickname-input');
     if (lobbyName && startName) startName.value = lobbyName.value.trim();
-    closeLobby();
+    updateLobbyUI();
+    if (gameInstance) {
+        gameInstance.playerCosmetics = getPlayerCosmeticsFromUI(gameInstance.playerCosmetics);
+    }
+    const lobby = document.getElementById('lobby-screen');
+    const start = document.getElementById('start-screen');
+    const pause = document.getElementById('pause-menu');
+    if (lobby) lobby.style.display = 'none';
+    if (start) start.style.display = 'none';
+    if (pause) pause.style.display = 'none';
     startGame();
 }
 
