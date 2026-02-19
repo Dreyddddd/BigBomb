@@ -117,7 +117,8 @@ const CONFIG = {
     GAME_MODE: 'DM', // 'DM', 'TDM', 'CTF'
     CTF_RESPAWN_TIME: 1200, // 20 seconds * 60 fps
     SPATIAL_GRID_SIZE: 200,
-    COLLISION_BATCH_TICKS: 3
+    COLLISION_BATCH_TICKS: 3,
+    ENABLE_PIXI_RENDERER: false
 };
 
 const BOT_NAMES = [
@@ -2671,8 +2672,8 @@ class Game {
         const container = document.getElementById('gameContainer');
         container.style.width = `${window.innerWidth}px`;
         container.style.height = `${window.innerHeight}px`;
-        this.canvas.width = CONFIG.VIEWPORT_WIDTH;
-        this.canvas.height = CONFIG.VIEWPORT_HEIGHT;
+        this.renderer.resize(CONFIG.VIEWPORT_WIDTH, CONFIG.VIEWPORT_HEIGHT);
+        this.ctx = this.renderer.getContext();
         this.noiseCanvas.width = 256;
         this.noiseCanvas.height = 256;
         this.vignetteCanvas.width = CONFIG.VIEWPORT_WIDTH;
