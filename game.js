@@ -95,129 +95,6 @@ class SpatialGrid {
 
 
 
-class RenderBackend {
-    constructor(canvas, viewportWidth, viewportHeight) {
-        this.canvas = canvas;
-        this.viewportWidth = viewportWidth;
-        this.viewportHeight = viewportHeight;
-        this.mode = 'canvas';
-        this.presentFrame = () => {};
-        this.ctx2d = null;
-        this.offscreenCanvas = null;
-        this.pixiApp = null;
-        this.pixiTexture = null;
-        this.pixiSprite = null;
-        this.init();
-    }
-
-    forceCanvasFallback(err) {
-        if (err) {
-            console.warn('PIXI render disabled, fallback to Canvas2D:', err);
-        }
-        this.mode = 'canvas';
-        this.presentFrame = () => {};
-        if (this.pixiApp && typeof this.pixiApp.destroy === 'function') {
-            this.pixiApp.destroy(true);
-        }
-        this.pixiApp = null;
-        this.pixiTexture = null;
-        this.pixiSprite = null;
-        this.offscreenCanvas = null;
-        this.canvas.width = this.viewportWidth;
-        this.canvas.height = this.viewportHeight;
-        this.ctx2d = this.canvas.getContext('2d');
-    }
-
-    init() {
-        const hasPixi = typeof window !== 'undefined' && typeof window.PIXI !== 'undefined';
-        const urlPixiParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('renderer') : null;
-        const pixiRequested = CONFIG.ENABLE_PIXI_RENDERER || urlPixiParam === 'pixi';
-        if (!hasPixi || !pixiRequested) {
-            this.forceCanvasFallback();
-            return;
-        }
-
-        try {
-            const PIXI = window.PIXI;
-            this.mode = 'pixi';
-            this.offscreenCanvas = document.createElement('canvas');
-            this.offscreenCanvas.width = this.viewportWidth;
-            this.offscreenCanvas.height = this.viewportHeight;
-            this.ctx2d = this.offscreenCanvas.getContext('2d');
-            if (!this.ctx2d) {
-                this.forceCanvasFallback(new Error('Offscreen 2D context unavailable'));
-                return;
-            }
-
-            this.pixiApp = new PIXI.Application({
-                view: this.canvas,
-                width: this.viewportWidth,
-                height: this.viewportHeight,
-                antialias: true,
-                autoDensity: false,
-                backgroundAlpha: 0,
-                clearBeforeRender: true,
-                powerPreference: 'high-performance',
-                autoStart: false,
-                sharedTicker: false
-            });
-
-            if (this.pixiApp.ticker) this.pixiApp.ticker.stop();
-
-            this.pixiTexture = PIXI.Texture.from(this.offscreenCanvas);
-            this.pixiTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
-            this.pixiSprite = new PIXI.Sprite(this.pixiTexture);
-            this.pixiSprite.x = 0;
-            this.pixiSprite.y = 0;
-            this.pixiApp.stage.addChild(this.pixiSprite);
-
-            this.presentFrame = () => {
-                try {
-                    if (this.pixiTexture && this.pixiTexture.baseTexture) {
-                        this.pixiTexture.baseTexture.update();
-                    }
-                    if (this.pixiApp && this.pixiApp.renderer) {
-                        this.pixiApp.renderer.render(this.pixiApp.stage);
-                    }
-                } catch (err) {
-                    this.forceCanvasFallback(err);
-                }
-            };
-        } catch (err) {
-            this.forceCanvasFallback(err);
-        }
-    }
-
-    resize(width, height) {
-        this.viewportWidth = width;
-        this.viewportHeight = height;
-        if (this.mode === 'pixi') {
-            this.canvas.width = width;
-            this.canvas.height = height;
-            this.offscreenCanvas.width = width;
-            this.offscreenCanvas.height = height;
-            if (this.pixiApp && this.pixiApp.renderer) {
-                this.pixiApp.renderer.resize(width, height);
-            }
-            if (this.pixiSprite) {
-                this.pixiSprite.width = width;
-                this.pixiSprite.height = height;
-            }
-        } else if (this.canvas) {
-            this.canvas.width = width;
-            this.canvas.height = height;
-        }
-    }
-
-    getContext() {
-        return this.ctx2d;
-    }
-
-    present() {
-        this.presentFrame();
-    }
-}
-
 // --- 2. Константы ---
 const CONFIG = {
     GRAVITY: 0.1,
@@ -403,6 +280,10 @@ const WeaponType = {
     NUKE:       { name: "Ядерка", color: '#2c3e50', radius: 250, damage: 100, type: 'nuke', cooldown: 280, chargeable: true }
 };
 
+const PROJECTILE_HITSCAN_TYPES = new Set(['energy', 'blackhole', 'laser', 'highspeed', 'blaster', 'shotgun', 'rapid']);
+const PROJECTILE_FAST_RAYCAST_TYPES = new Set(['highspeed', 'laser']);
+const PROJECTILE_LIGHT_TRAIL_TYPES = new Set(['blaster', 'rapid']);
+
 const PERK_LIST = [
     { id: 'tenacity', name: 'Упорство', desc: '+10% к максимальному HP' },
     { id: 'field_armor', name: 'Полевая броня', desc: 'Входящий взрывной урон -10%' },
@@ -549,13 +430,14 @@ class Particle {
     }
     update(game) {
         if (!this.active) return false;
-        
+
         if (this.type === 'blood' || this.type === 'chunk') {
             this.vel.y += CONFIG.GRAVITY;
-            this.pos = this.pos.add(this.vel);
+            this.pos.x += this.vel.x;
+            this.pos.y += this.vel.y;
             if (game.terrain.isSolid(this.pos.x, this.pos.y)) {
                 this.active = false;
-                let stainSize = this.type === 'chunk' ? 4 : 2;
+                const stainSize = this.type === 'chunk' ? 4 : 2;
                 game.terrain.drawStain(this.pos.x, this.pos.y, stainSize, this.color);
             }
             this.life--;
@@ -565,16 +447,30 @@ class Particle {
         if (game.blackHoles && game.blackHoles.length) {
             for (let i = 0; i < game.blackHoles.length; i++) {
                 const blackHole = game.blackHoles[i];
-                if (distSq(this.pos, blackHole.pos) < 250 * 250) {
-                    this.vel = this.vel.add(blackHole.pos.sub(this.pos).normalize().mult(1.5));
+                const dx = blackHole.pos.x - this.pos.x;
+                const dy = blackHole.pos.y - this.pos.y;
+                const dSq = dx * dx + dy * dy;
+                if (dSq < 250 * 250 && dSq > 0.0001) {
+                    const invMag = 1 / Math.sqrt(dSq);
+                    this.vel.x += dx * invMag * 1.5;
+                    this.vel.y += dy * invMag * 1.5;
                 }
             }
         }
-        this.pos = this.pos.add(this.vel);
-        if (this.type === 'fire') { this.vel.y -= 0.03; this.vel.x *= 0.95; this.size *= 0.95; }
-        else if (this.type === 'spark') { this.vel.y += 0.1; }
-        else if (this.type === 'glow') { this.vel = this.vel.mult(0.92); }
-        else { this.vel.y += 0.02; }
+        this.pos.x += this.vel.x;
+        this.pos.y += this.vel.y;
+        if (this.type === 'fire') {
+            this.vel.y -= 0.03;
+            this.vel.x *= 0.95;
+            this.size *= 0.95;
+        } else if (this.type === 'spark') {
+            this.vel.y += 0.1;
+        } else if (this.type === 'glow') {
+            this.vel.x *= 0.92;
+            this.vel.y *= 0.92;
+        } else {
+            this.vel.y += 0.02;
+        }
         this.life--;
         if (this.life <= 0) this.active = false;
         return this.active;
@@ -679,20 +575,20 @@ class BackgroundGenerator {
     }
     draw(ctx, camera) {
         const cameraRight = camera.x + CONFIG.VIEWPORT_WIDTH;
+        const prevAlpha = ctx.globalAlpha;
         for (let i = 0; i < this.layers.length; i++) {
             const layer = this.layers[i];
-            let px = camera.x * layer.speedX;
-            let py = camera.y * layer.speedY;
-            let w = layer.canvas.width;
+            const px = camera.x * layer.speedX;
+            const py = camera.y * layer.speedY;
+            const w = layer.canvas.width;
             let startX = -Math.floor(px % w);
             if (startX > 0) startX -= w;
-            ctx.save();
             ctx.globalAlpha = layer.alpha;
             ctx.drawImage(layer.canvas, startX, py);
             if (startX + w < cameraRight) ctx.drawImage(layer.canvas, startX + w, py);
             if (startX + w * 2 < cameraRight) ctx.drawImage(layer.canvas, startX + w * 2, py);
-            ctx.restore();
         }
+        ctx.globalAlpha = prevAlpha;
     }
 }
 
@@ -1367,7 +1263,7 @@ class Projectile {
         if (this.ownerCollisionGrace > 0) this.ownerCollisionGrace--;
         
         if (this.type.type === 'fire_droplet') {
-            this.pos = this.pos.add(this.vel); this.vel.y += CONFIG.GRAVITY; 
+            this.pos.x += this.vel.x; this.pos.y += this.vel.y; this.vel.y += CONFIG.GRAVITY; 
             if (game.tick % 5 === 0) {
                 this.trail.push(this.pos.clone());
                 if (this.trail.length > 5) this.trail.shift();
@@ -1381,14 +1277,12 @@ class Projectile {
         if (this.type.type === 'homing') {
             let nearest = null;
             let minDSq = 400 * 400;
-            const candidates = game.getNearbyEntities(this.pos, 400);
-            for (let i = 0; i < candidates.length; i++) {
-                const e = candidates[i];
-                if (e.id === this.ownerId || e.dead) continue;
-                if (CONFIG.GAME_MODE !== 'DM' && e.team === this.team) continue;
+            game.forEachNearbyEntity(this.pos, 400, (e) => {
+                if (e.id === this.ownerId || e.dead) return;
+                if (CONFIG.GAME_MODE !== 'DM' && e.team === this.team) return;
                 const d = distSq(this.pos, e.pos);
                 if (d < minDSq) { minDSq = d; nearest = e; }
-            }
+            });
             if (nearest) {
                 let dir = nearest.pos.sub(this.pos).normalize().mult(0.3);
                 this.vel = this.vel.add(dir);
@@ -1398,7 +1292,7 @@ class Projectile {
 
         let trailStride = 3;
         let maxTrail = 10;
-        if (this.type.type === 'blaster' || this.type.type === 'rapid') {
+        if (PROJECTILE_LIGHT_TRAIL_TYPES.has(this.type.type)) {
             trailStride = 8;
             maxTrail = 0;
         } else if (this.type.type === 'shotgun') {
@@ -1410,7 +1304,7 @@ class Projectile {
             if (this.trail.length > maxTrail) this.trail.shift();
         }
 
-        if (this.type.type !== 'energy' && this.type.type !== 'blackhole' && this.type.type !== 'laser' && this.type.type !== 'highspeed' && this.type.type !== 'blaster' && this.type.type !== 'shotgun' && this.type.type !== 'rapid') {
+        if (!PROJECTILE_HITSCAN_TYPES.has(this.type.type)) {
              this.vel = this.vel.mult(CONFIG.PROJECTILE_DRAG);
              this.vel.y += CONFIG.PROJECTILE_GRAVITY;
         } else if (this.type.type === 'blackhole') {
@@ -1428,7 +1322,7 @@ class Projectile {
 
         const speed = this.vel.mag();
         let raycastStride = 3;
-        if (this.type.type === 'highspeed' || this.type.type === 'laser' || speed > 10) {
+        if (PROJECTILE_FAST_RAYCAST_TYPES.has(this.type.type) || speed > 10) {
             raycastStride = 1;
         } else if (speed > 6) {
             raycastStride = 2;
@@ -2690,9 +2584,7 @@ class Bot extends Character {
 class Game {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
-        this.renderer = new RenderBackend(this.canvas, CONFIG.VIEWPORT_WIDTH, CONFIG.VIEWPORT_HEIGHT);
-        this.ctx = this.renderer.getContext();
-        this.renderMode = this.renderer.mode;
+        this.ctx = this.canvas.getContext('2d');
         this.camera = new Vector2(0, 0); this.shake = 0; this.flash = 0; this.tick = 0; this.gameState = 'MENU';
         this.paused = false;
         this.cameraTarget = null;
@@ -3356,7 +3248,9 @@ class Game {
 
     draw() {
         const viewCanvas = this.ctx && this.ctx.canvas ? this.ctx.canvas : this.canvas;
-        this.ctx.fillStyle = '#000'; this.ctx.fillRect(0,0,viewCanvas.width, viewCanvas.height);
+        const viewWidth = viewCanvas.width;
+        const viewHeight = viewCanvas.height;
+        this.ctx.fillStyle = '#000'; this.ctx.fillRect(0,0,viewWidth, viewHeight);
         
         if (!this.terrain) return;
 
@@ -3369,8 +3263,8 @@ class Game {
         // Calculate the slice of terrain canvas to draw based on camera
         // Note: The context is already translated by -camera.x, -camera.y.
         // So drawing at (camera.x, camera.y) in world coordinates maps to (0,0) on screen.
-        let vw = viewCanvas.width;
-        let vh = viewCanvas.height;
+        let vw = viewWidth;
+        let vh = viewHeight;
         let sx = Math.max(0, Math.floor(this.camera.x));
         let sy = Math.max(0, Math.floor(this.camera.y));
         let sw = Math.min(vw, this.terrain.width - sx);
@@ -3382,19 +3276,19 @@ class Game {
         }
 
         const viewLeft = this.camera.x - 200;
-        const viewRight = this.camera.x + CONFIG.VIEWPORT_WIDTH + 200;
+        const viewRight = this.camera.x + viewWidth + 200;
         const viewTop = this.camera.y - 200;
-        const viewBottom = this.camera.y + CONFIG.VIEWPORT_HEIGHT + 200;
+        const viewBottom = this.camera.y + viewHeight + 200;
         const inView = (obj) => obj && obj.pos &&
             obj.pos.x >= viewLeft && obj.pos.x <= viewRight &&
             obj.pos.y >= viewTop && obj.pos.y <= viewBottom;
 
-        for (let i = 0; i < this.bases.length; i++) this.bases[i].draw(this.ctx);
-        for (let i = 0; i < this.flags.length; i++) this.flags[i].draw(this.ctx);
-        for (let i = 0; i < this.crates.length; i++) { const c = this.crates[i]; if (inView(c)) c.draw(this.ctx); }
+        for (let i = 0; i < this.bases.length; i++) { const b = this.bases[i]; if (inView(b)) b.draw(this.ctx); }
+        for (let i = 0; i < this.flags.length; i++) { const f = this.flags[i]; if (inView(f)) f.draw(this.ctx); }
+        for (let i = 0; i < this.activeCrates.length; i++) { const c = this.activeCrates[i]; if (inView(c)) c.draw(this.ctx); }
         for (let i = 0; i < this.fires.length; i++) { const f = this.fires[i]; if (inView(f)) f.draw(this.ctx); }
         for (let i = 0; i < this.effects.length; i++) { const f = this.effects[i]; if (inView(f)) f.draw(this.ctx); else if (!f.pos) f.draw(this.ctx); }
-        for (let i = 0; i < this.entities.length; i++) { const e = this.entities[i]; if (inView(e)) e.draw(this.ctx); }
+        for (let i = 0; i < this.aliveEntities.length; i++) { const e = this.aliveEntities[i]; if (inView(e)) e.draw(this.ctx); }
         for (let i = 0; i < this.projectiles.length; i++) {
             const p = this.projectiles[i];
             if (inView(p)) p.draw(this.ctx);
@@ -3415,11 +3309,10 @@ class Game {
         if (this.noisePattern) {
             this.ctx.globalAlpha = 0.04;
             this.ctx.fillStyle = this.noisePattern;
-            this.ctx.fillRect(0, 0, viewCanvas.width, viewCanvas.height);
+            this.ctx.fillRect(0, 0, viewWidth, viewHeight);
             this.ctx.globalAlpha = 1;
         }
-        if (this.flash > 0) { this.ctx.fillStyle = `rgba(255,255,255,${this.flash/20})`; this.ctx.fillRect(0,0,viewCanvas.width, viewCanvas.height); this.flash--; }
-        if (this.renderer) this.renderer.present();
+        if (this.flash > 0) { this.ctx.fillStyle = `rgba(255,255,255,${this.flash/20})`; this.ctx.fillRect(0,0,viewWidth, viewHeight); this.flash--; }
     }
 }
 
