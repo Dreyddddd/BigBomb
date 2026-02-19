@@ -3391,7 +3391,16 @@ function startGameFromLobby() {
     const lobbyName = document.getElementById('lobby-nickname-input');
     const startName = document.getElementById('nickname-input');
     if (lobbyName && startName) startName.value = lobbyName.value.trim();
-    closeLobby();
+    updateLobbyUI();
+    if (gameInstance) {
+        gameInstance.playerCosmetics = getPlayerCosmeticsFromUI(gameInstance.playerCosmetics);
+    }
+    const lobby = document.getElementById('lobby-screen');
+    const start = document.getElementById('start-screen');
+    const pause = document.getElementById('pause-menu');
+    if (lobby) lobby.style.display = 'none';
+    if (start) start.style.display = 'none';
+    if (pause) pause.style.display = 'none';
     startGame();
 }
 
