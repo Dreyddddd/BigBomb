@@ -35,6 +35,30 @@ function distSq(a, b) {
     return dx * dx + dy * dy;
 }
 
+function roundRectPath(ctx, x, y, width, height, radius) {
+    const maxRadius = Math.max(0, Math.min(radius, Math.min(width, height) * 0.5));
+    if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(x, y, width, height, maxRadius);
+        return;
+    }
+    const r = maxRadius;
+    const right = x + width;
+    const bottom = y + height;
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(right - r, y);
+    ctx.quadraticCurveTo(right, y, right, y + r);
+    ctx.lineTo(right, bottom - r);
+    ctx.quadraticCurveTo(right, bottom, right - r, bottom);
+    ctx.lineTo(x + r, bottom);
+    ctx.quadraticCurveTo(x, bottom, x, bottom - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+}
+
+function canDrawImage(img) {
+    return !!(img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0);
+}
+
 class SpatialGrid {
     constructor(cellSize, width, height) {
         this.cellSize = cellSize;
@@ -748,11 +772,11 @@ class Crate {
             let grad = ctx.createLinearGradient(-10, -10, 10, 10);
             grad.addColorStop(0, '#555'); grad.addColorStop(0.5, '#ccc'); grad.addColorStop(1, '#555');
             ctx.fillStyle = grad;
-            ctx.beginPath(); ctx.roundRect(-10, -15, 20, 30, 8); ctx.fill();
+            ctx.beginPath(); roundRectPath(ctx, -10, -15, 20, 30, 8); ctx.fill();
             ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke();
             ctx.fillStyle = this.content.color;
             ctx.shadowColor = this.content.color; ctx.shadowBlur = 10;
-            ctx.beginPath(); ctx.roundRect(-6, -10, 12, 20, 4); ctx.fill();
+            ctx.beginPath(); roundRectPath(ctx, -6, -10, 12, 20, 4); ctx.fill();
             ctx.shadowBlur = 0;
             ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText(this.content.icon, 0, 0);
@@ -1143,8 +1167,14 @@ class Terrain {
         const baseW = 500;
         const baseH = this.height - 400;
         const slopeWidth = 600;
-        const path = new Path2D();
+        this.destructibleClipMeta = { baseW, baseH, slopeWidth, mode: CONFIG.GAME_MODE };
 
+        if (typeof Path2D !== 'function') {
+            this.destructibleClipPath = null;
+            return;
+        }
+
+        const path = new Path2D();
         path.moveTo(0, 0);
         path.lineTo(this.width, 0);
         if (CONFIG.GAME_MODE !== 'DM') {
@@ -1162,9 +1192,34 @@ class Terrain {
         this.destructibleClipPath = path;
     }
 
+    traceDestructibleClipPath(ctx) {
+        const meta = this.destructibleClipMeta || { baseW: 500, baseH: this.height - 400, slopeWidth: 600, mode: CONFIG.GAME_MODE };
+        const { baseW, baseH, slopeWidth, mode } = meta;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(this.width, 0);
+        if (mode !== 'DM') {
+            ctx.lineTo(this.width, baseH);
+            ctx.lineTo(this.width - baseW, baseH);
+            ctx.lineTo(this.width - baseW - slopeWidth, this.height - 100);
+            ctx.lineTo(baseW + slopeWidth, this.height - 100);
+            ctx.lineTo(baseW, baseH);
+            ctx.lineTo(0, baseH);
+        } else {
+            ctx.lineTo(this.width, this.height);
+            ctx.lineTo(0, this.height);
+        }
+        ctx.closePath();
+    }
+
     clipToDestructible() {
-        if (!this.destructibleClipPath) this.buildDestructibleClipPath();
-        this.ctx.clip(this.destructibleClipPath);
+        if (!this.destructibleClipMeta) this.buildDestructibleClipPath();
+        if (this.destructibleClipPath) {
+            this.ctx.clip(this.destructibleClipPath);
+            return;
+        }
+        this.traceDestructibleClipPath(this.ctx);
+        this.ctx.clip();
     }
 
     destroy(x, y, radius, type = null) {
@@ -1212,6 +1267,15 @@ class Terrain {
         // 3. COLLISION UPDATE (Batch updates)
         this.queueCollisionUpdate(x, y, radius);
         return radius;
+    }
+
+
+    findGroundY(x) {
+        const xi = Math.max(0, Math.min(this.width - 1, x | 0));
+        for (let y = 0; y < this.height; y++) {
+            if (this.isSolid(xi, y)) return y;
+        }
+        return this.height - 120;
     }
 
     isSolid(x, y) {
@@ -2155,7 +2219,7 @@ class Character {
 
         const drawBoots = () => {
             const bootsImg = getBootsImage();
-            if (bootsImg && bootsImg.complete && bootsImg.naturalWidth > 0) {
+            if (canDrawImage(bootsImg)) {
                 const bootW = 12;
                 const bootH = 14;
                 const leftX = -9 + walkCycle;
@@ -2179,7 +2243,7 @@ class Character {
         const cosmetics = this.cosmetics || defaultCosmetics();
 
         const bodyImg = getBodyImage(cosmetics.body);
-        if (bodyImg && bodyImg.complete && bodyImg.naturalWidth > 0) {
+        if (canDrawImage(bodyImg)) {
             const bodyWidth = 34;
             const bodyHeight = 33;
             ctx.save();
@@ -2188,7 +2252,7 @@ class Character {
             ctx.restore();
         } else {
             ctx.fillStyle = this.color;
-            ctx.beginPath(); ctx.roundRect(-8, -10, 16, 20, 6); ctx.fill();
+            ctx.beginPath(); roundRectPath(ctx, -8, -10, 16, 20, 6); ctx.fill();
             ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(-6, -8, 12, 14);
             ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(-7, -9, 5, 7);
         }
@@ -2197,7 +2261,7 @@ class Character {
         drawBoots();
 
         const headImg = getHeadImage(cosmetics.head);
-        if (headImg && headImg.complete && headImg.naturalWidth > 0) {
+        if (canDrawImage(headImg)) {
             const headSize = 38;
             ctx.save();
             ctx.scale(-1, 1);
@@ -2248,7 +2312,7 @@ class Character {
             ctx.lineWidth = 1;
 
             ctx.beginPath();
-            ctx.roundRect(-3, -2.5, 6, 5, 2.2);
+            roundRectPath(ctx, -3, -2.5, 6, 5, 2.2);
             ctx.fill();
             ctx.stroke();
 
@@ -2293,7 +2357,7 @@ class Character {
         ctx.translate(weaponPivotX, weaponPivotY);
         ctx.rotate(angle);
         const weaponImg = getWeaponImage(this.weapon.type);
-        if (weaponImg && weaponImg.complete && weaponImg.naturalWidth > 0) {
+        if (canDrawImage(weaponImg)) {
             const weaponW = 50;
             const weaponH = 25;
             ctx.save();
@@ -2741,7 +2805,10 @@ class Game {
         let startX = pTeam === 2 ? CONFIG.WORLD_WIDTH - baseW : baseW;
         let startY = baseH - 50;
 
-        if (CONFIG.GAME_MODE === 'DM') { startX = CONFIG.WORLD_WIDTH / 2; startY = 200; }
+        if (CONFIG.GAME_MODE === 'DM') {
+            startX = CONFIG.WORLD_WIDTH / 2;
+            startY = this.terrain.findGroundY(startX) - 60;
+        }
         
         const playerColor = CONFIG.GAME_MODE === 'DM' ? DEFAULT_PLAYER_COLOR : TEAMS[pTeam].color;
         this.playerCosmetics = getPlayerCosmeticsFromUI(this.playerCosmetics);
@@ -2755,7 +2822,7 @@ class Game {
         for(let i=0; i<CONFIG.BOT_COUNT; i++) {
             let team = CONFIG.GAME_MODE === 'DM' ? 0 : (i % 2 === 0 ? 2 : 1);
             let bx = team === 1 ? baseW + Math.random()*100 : (team === 2 ? CONFIG.WORLD_WIDTH - baseW - Math.random()*100 : Math.random()*CONFIG.WORLD_WIDTH);
-            let by = team === 0 ? 100 : baseH - 50;
+            let by = team === 0 ? (this.terrain.findGroundY(bx) - 60) : (baseH - 50);
             let name = BOT_NAMES[i % BOT_NAMES.length];
             const botId = i + 1;
             if (!this.botCosmetics.has(botId)) {
@@ -2880,7 +2947,10 @@ class Game {
         
         if (ent.team === 1) ent.pos = new Vector2(baseW + (Math.random()-0.5)*100, baseH);
         else if (ent.team === 2) ent.pos = new Vector2(CONFIG.WORLD_WIDTH - baseW + (Math.random()-0.5)*100, baseH);
-        else ent.pos = new Vector2(Math.random() * (CONFIG.WORLD_WIDTH - 200) + 100, 200);
+        else {
+            const rx = Math.random() * (CONFIG.WORLD_WIDTH - 200) + 100;
+            ent.pos = new Vector2(rx, this.terrain.findGroundY(rx) - 60);
+        }
 
         this.particleSystem.emit(ent.pos, new Vector2(0,0), 50, '#fff', 'glow');
     }
@@ -3416,7 +3486,14 @@ function startGameFromLobby() {
     if (lobby) lobby.style.display = 'none';
     if (start) start.style.display = 'none';
     if (pause) pause.style.display = 'none';
-    startGame();
+    try {
+        startGame();
+    } catch (err) {
+        console.error('Failed to start match from lobby:', err);
+        if (lobby) lobby.style.display = 'flex';
+        if (start) start.style.display = 'none';
+        if (pause) pause.style.display = 'none';
+    }
 }
 
 function populateCosmeticsSelects() {
