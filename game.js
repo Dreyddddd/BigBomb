@@ -2838,17 +2838,26 @@ class Game {
 
         this.gameState = 'PLAYING';
         this.paused = false;
-        document.getElementById('lobby-screen').style.display = 'none';
-        document.getElementById('pause-menu').style.display = 'none';
-        document.getElementById('start-screen').style.display = 'none'; 
-        document.getElementById('ui-layer').style.display = 'flex';
-        document.getElementById('perk-choice').style.display = 'none';
-        document.getElementById('frag-goal-display').innerText = CONFIG.WIN_LIMIT;
-        document.getElementById('team-hud').style.display = CONFIG.GAME_MODE === 'DM' ? 'none' : 'flex';
-        
+
+        const lobbyScreen = document.getElementById('lobby-screen');
+        const pauseMenu = document.getElementById('pause-menu');
+        const startScreen = document.getElementById('start-screen');
+        const uiLayer = document.getElementById('ui-layer');
+        const perkChoice = document.getElementById('perk-choice');
+        const fragGoal = document.getElementById('frag-goal-display');
+        const teamHud = document.getElementById('team-hud');
+
+        if (lobbyScreen) lobbyScreen.style.display = 'none';
+        if (pauseMenu) pauseMenu.style.display = 'none';
+        if (startScreen) startScreen.style.display = 'none';
+        if (uiLayer) uiLayer.style.display = 'flex';
+        if (perkChoice) perkChoice.style.display = 'none';
+        if (fragGoal) fragGoal.innerText = CONFIG.WIN_LIMIT;
+        if (teamHud) teamHud.style.display = CONFIG.GAME_MODE === 'DM' ? 'none' : 'flex';
+
         // Hide/Show timer based on mode (Only shows during death now in CTF)
         if (this.dom.ctfRespawnTimer) this.dom.ctfRespawnTimer.style.display = 'none';
-        
+
         if (this.dom.scoreBlue) this.dom.scoreBlue.innerText = "0";
         if (this.dom.scoreRed) this.dom.scoreRed.innerText = "0";
 
@@ -3483,11 +3492,21 @@ function startGameFromLobby() {
         gameInstance.playerCosmetics = getPlayerCosmeticsFromUI(gameInstance.playerCosmetics);
     }
     const lobby = document.getElementById('lobby-screen');
+    const launchError = document.getElementById('lobby-launch-error');
+    if (launchError) {
+        launchError.textContent = '';
+        launchError.style.display = 'none';
+    }
+
     try {
         startGame();
     } catch (err) {
         console.error('Failed to start match from lobby:', err);
         if (lobby) lobby.style.display = 'flex';
+        if (launchError) {
+            launchError.textContent = `Ошибка запуска: ${err && err.message ? err.message : 'подробности в консоли'}`;
+            launchError.style.display = 'block';
+        }
     }
 }
 
