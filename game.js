@@ -3504,10 +3504,13 @@ function getPlayerCosmeticsFromUI(current) {
 function startGameFromLobby() {
     const lobbyName = document.getElementById('lobby-nickname-input');
     const startName = document.getElementById('nickname-input');
+<<<<<<< codex/analyze-html5-game-files-and-structure-qqa17o
+=======
     if (lobbyName && startName) startName.value = lobbyName.value.trim();
     updateLobbyUI();
     const instance = ensureGameInstance();
     instance.playerCosmetics = getPlayerCosmeticsFromUI(instance.playerCosmetics);
+>>>>>>> main
     const lobby = document.getElementById('lobby-screen');
     const launchError = document.getElementById('lobby-launch-error');
     if (launchError) {
@@ -3516,12 +3519,25 @@ function startGameFromLobby() {
     }
 
     try {
+<<<<<<< codex/analyze-html5-game-files-and-structure-qqa17o
+        if (lobbyName && startName) startName.value = lobbyName.value.trim();
+        updateLobbyUI();
+        const instance = ensureGameInstance();
+        instance.playerCosmetics = getPlayerCosmeticsFromUI(instance.playerCosmetics);
+        instance.start();
+=======
         startGame();
+>>>>>>> main
     } catch (err) {
         console.error('Failed to start match from lobby:', err);
         if (lobby) lobby.style.display = 'flex';
         if (launchError) {
+<<<<<<< codex/analyze-html5-game-files-and-structure-qqa17o
+            const msg = err && err.message ? err.message : 'подробности в консоли';
+            launchError.textContent = `Ошибка запуска: ${msg}`;
+=======
             launchError.textContent = `Ошибка запуска: ${err && err.message ? err.message : 'подробности в консоли'}`;
+>>>>>>> main
             launchError.style.display = 'block';
         }
     }
