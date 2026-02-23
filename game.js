@@ -2838,6 +2838,8 @@ class Game {
 
         this.gameState = 'PLAYING';
         this.paused = false;
+        document.getElementById('lobby-screen').style.display = 'none';
+        document.getElementById('pause-menu').style.display = 'none';
         document.getElementById('start-screen').style.display = 'none'; 
         document.getElementById('ui-layer').style.display = 'flex';
         document.getElementById('perk-choice').style.display = 'none';
@@ -3481,18 +3483,11 @@ function startGameFromLobby() {
         gameInstance.playerCosmetics = getPlayerCosmeticsFromUI(gameInstance.playerCosmetics);
     }
     const lobby = document.getElementById('lobby-screen');
-    const start = document.getElementById('start-screen');
-    const pause = document.getElementById('pause-menu');
-    if (lobby) lobby.style.display = 'none';
-    if (start) start.style.display = 'none';
-    if (pause) pause.style.display = 'none';
     try {
         startGame();
     } catch (err) {
         console.error('Failed to start match from lobby:', err);
         if (lobby) lobby.style.display = 'flex';
-        if (start) start.style.display = 'none';
-        if (pause) pause.style.display = 'none';
     }
 }
 
