@@ -136,8 +136,11 @@ const CONFIG = {
     PROJECTILE_DRAG: 0.998,
     PROJECTILE_GRAVITY: 0.05,
     MAX_PARTICLES: 600, 
+    MIN_PARTICLES_BUDGET: 220,
     WIN_LIMIT: 10,
     MAX_INVENTORY: 7,
+    MAX_CRATES_TOTAL: 120,
+    MAX_CRATES_ACTIVE: 40,
     GAME_MODE: 'DM', // 'DM', 'TDM', 'CTF'
     CTF_RESPAWN_TIME: 1200, // 20 seconds * 60 fps
     SPATIAL_GRID_SIZE: 200,
@@ -524,14 +527,20 @@ class ParticleSystem {
         this.freeParticles = [];
         this.activeParticles = [];
         this.activeCount = 0;
+        this.maxActive = CONFIG.MAX_PARTICLES;
         for(let i=0; i<CONFIG.MAX_PARTICLES; i++) {
             const particle = new Particle();
             this.pool.push(particle);
             this.freeParticles.push(particle);
         }
     }
+    setBudget(limit) {
+        const capped = Math.max(CONFIG.MIN_PARTICLES_BUDGET, Math.min(CONFIG.MAX_PARTICLES, limit | 0));
+        this.maxActive = capped;
+    }
+
     emit(pos, vel, life, color, type) {
-        if (this.freeParticles.length === 0) return;
+        if (this.activeCount >= this.maxActive || this.freeParticles.length === 0) return;
         const particle = this.freeParticles.pop();
         particle.spawn(pos, vel, life, color, type);
         this.activeParticles.push(particle);
@@ -548,6 +557,10 @@ class ParticleSystem {
                 this.activeCount = Math.max(0, this.activeCount - 1);
                 this.freeParticles.push(particle);
                 continue;
+            }
+            const perfLevel = game ? (game.perfLevel || 0) : 0;
+            if (perfLevel >= 2 && (particle.type === 'normal' || particle.type === 'blood' || particle.type === 'chunk')) {
+                if (((game.tick + i) & (perfLevel >= 3 ? 3 : 1)) !== 0) continue;
             }
             particle.draw(ctx, game.camera); // Pass camera for culling
         }
@@ -2682,6 +2695,8 @@ class Game {
         this.lastHpUiValue = -1;
         this.perfLevel = 0;
         this.maxProjectiles = 650;
+        this.dynamicProjectileBudget = 650;
+        this.dynamicParticleBudget = CONFIG.MAX_PARTICLES;
         this.dom = {
             hpDisplay: document.getElementById('hp-display'),
             statsBody: document.getElementById('stats-body'),
@@ -2734,10 +2749,15 @@ class Game {
 
     resize() {
         const container = document.getElementById('gameContainer');
-        container.style.width = `${window.innerWidth}px`;
-        container.style.height = `${window.innerHeight}px`;
-        this.renderer.resize(CONFIG.VIEWPORT_WIDTH, CONFIG.VIEWPORT_HEIGHT);
-        this.ctx = this.renderer.getContext();
+        if (container) {
+            container.style.width = `${window.innerWidth}px`;
+            container.style.height = `${window.innerHeight}px`;
+        }
+
+        this.canvas.width = CONFIG.VIEWPORT_WIDTH;
+        this.canvas.height = CONFIG.VIEWPORT_HEIGHT;
+        this.ctx = this.canvas.getContext('2d');
+
         this.noiseCanvas.width = 256;
         this.noiseCanvas.height = 256;
         this.vignetteCanvas.width = CONFIG.VIEWPORT_WIDTH;
@@ -2874,10 +2894,29 @@ class Game {
     }
 
     spawnCrate() {
-        let type = 'weapon'; if (Math.random() < 0.3) type = Math.random() > 0.5 ? 'medkit' : 'powerup';
-        this.crates.push(new Crate(Math.random()*(CONFIG.WORLD_WIDTH-800)+400, -50, type)); 
+        if (this.activeCrates && this.activeCrates.length >= CONFIG.MAX_CRATES_ACTIVE) return;
+        if (this.crates.length >= CONFIG.MAX_CRATES_TOTAL) {
+            this.compactCrates();
+            if (this.crates.length >= CONFIG.MAX_CRATES_TOTAL) return;
+        }
+
+        let type = 'weapon';
+        if (Math.random() < 0.3) type = Math.random() > 0.5 ? 'medkit' : 'powerup';
+        this.crates.push(new Crate(Math.random() * (CONFIG.WORLD_WIDTH - 800) + 400, -50, type));
     }
     
+
+    compactCrates() {
+        if (!this.crates || this.crates.length === 0) return;
+        let write = 0;
+        for (let i = 0; i < this.crates.length; i++) {
+            const crate = this.crates[i];
+            if (!crate || !crate.active) continue;
+            this.crates[write++] = crate;
+        }
+        this.crates.length = write;
+    }
+
     scoreTeam(teamId, amt) {
         this.scores[teamId] += amt;
         if (this.dom.scoreBlue) this.dom.scoreBlue.innerText = this.scores[1];
@@ -3143,7 +3182,15 @@ class Game {
             this.projectiles.splice(0, this.projectiles.length - this.maxProjectiles);
         }
         const projectileCount = this.projectiles.length;
-        this.perfLevel = projectileCount > 300 ? 2 : (projectileCount > 170 ? 1 : 0);
+        const activeParticleCount = this.particleSystem ? this.particleSystem.activeCount : 0;
+        const aliveCountApprox = this.aliveEntities ? this.aliveEntities.length : this.entities.length;
+        const perfScore = projectileCount + activeParticleCount * 0.6 + aliveCountApprox * 4;
+        this.perfLevel = perfScore > 620 ? 3 : (perfScore > 420 ? 2 : (perfScore > 240 ? 1 : 0));
+
+        this.dynamicProjectileBudget = this.perfLevel >= 3 ? 440 : (this.perfLevel === 2 ? 520 : (this.perfLevel === 1 ? 600 : 700));
+        this.maxProjectiles = this.dynamicProjectileBudget;
+        this.dynamicParticleBudget = this.perfLevel >= 3 ? 260 : (this.perfLevel === 2 ? 360 : (this.perfLevel === 1 ? 480 : CONFIG.MAX_PARTICLES));
+        this.particleSystem.setBudget(this.dynamicParticleBudget);
 
         this.aliveEntities.length = 0;
         this.entityById.clear();
@@ -3212,7 +3259,8 @@ class Game {
             this.player.input.aimTarget = this.input.mouse.worldPos;
         }
         
-        const aiStride = Math.max(1, Math.ceil(this.aliveEntities.length / 8));
+        const aiLoadPenalty = this.perfLevel >= 2 ? (this.perfLevel === 3 ? 3 : 2) : 1;
+        const aiStride = Math.max(1, Math.ceil(this.aliveEntities.length / 8) * aiLoadPenalty);
         const farBotUpdateStride = this.aliveEntities.length > 24 ? 3 : (this.aliveEntities.length > 14 ? 2 : 1);
         const farBotDistSq = 1400 * 1400;
         for (let i = 0; i < this.entities.length; i++) {
@@ -3235,11 +3283,14 @@ class Game {
         }
         
         for (let i = 0; i < this.crates.length; i++) this.crates[i].update(this.terrain);
+        if (this.tick % 120 === 0 && this.crates.length > CONFIG.MAX_CRATES_ACTIVE) this.compactCrates();
         for (let i = 0; i < this.flags.length; i++) this.flags[i].update(this.terrain, this.entities, this);
         let projectileFarStride = 1;
         if (this.projectiles.length > 120) projectileFarStride = 2;
         if (this.projectiles.length > 220) projectileFarStride = 3;
         if (this.projectiles.length > 320) projectileFarStride = 4;
+        if (this.perfLevel >= 2) projectileFarStride += 1;
+        if (this.perfLevel >= 3) projectileFarStride += 1;
         const projectileFarDistSq = 1700 * 1700;
         for (let i = this.projectiles.length - 1; i >= 0; i--) { 
             let p = this.projectiles[i];
@@ -3281,16 +3332,17 @@ class Game {
         // CAMERA LOGIC WITH MOUSE OFFSET
         let target = this.cameraTarget || this.player;
         if (target) {
-            let targetPos = target.pos.clone();
-            
+            let targetX = target.pos.x;
+            let targetY = target.pos.y;
+
             // Add Mouse Offset
             if (!this.roundOver && !this.gameOver && target === this.player) {
-                let mouseOffset = this.input.mouse.screenPos.sub(new Vector2(CONFIG.VIEWPORT_WIDTH/2, CONFIG.VIEWPORT_HEIGHT/2));
-                targetPos = targetPos.add(mouseOffset.mult(0.3)); // Offset strength
+                targetX += (this.input.mouse.screenPos.x - CONFIG.VIEWPORT_WIDTH / 2) * 0.3;
+                targetY += (this.input.mouse.screenPos.y - CONFIG.VIEWPORT_HEIGHT / 2) * 0.3;
             }
 
-            let tx = Math.max(0, Math.min(targetPos.x - CONFIG.VIEWPORT_WIDTH/2, CONFIG.WORLD_WIDTH - CONFIG.VIEWPORT_WIDTH));
-            let ty = Math.max(0, Math.min(targetPos.y - CONFIG.VIEWPORT_HEIGHT/2, CONFIG.WORLD_HEIGHT - CONFIG.VIEWPORT_HEIGHT));
+            let tx = Math.max(0, Math.min(targetX - CONFIG.VIEWPORT_WIDTH / 2, CONFIG.WORLD_WIDTH - CONFIG.VIEWPORT_WIDTH));
+            let ty = Math.max(0, Math.min(targetY - CONFIG.VIEWPORT_HEIGHT / 2, CONFIG.WORLD_HEIGHT - CONFIG.VIEWPORT_HEIGHT));
             this.camera.x += (tx - this.camera.x) * 0.1; 
             this.camera.y += (ty - this.camera.y) * 0.1;
             
@@ -3535,14 +3587,6 @@ function startGameFromLobby() {
     setLaunchError('');
 
     try {
-    const lobby = document.getElementById('lobby-screen');
-    const launchError = document.getElementById('lobby-launch-error');
-    if (launchError) {
-        launchError.textContent = '';
-        launchError.style.display = 'none';
-    }
-
-    try {
         if (lobbyName && startName) startName.value = lobbyName.value.trim();
         updateLobbyUI();
         const instance = ensureGameInstance();
@@ -3553,14 +3597,6 @@ function startGameFromLobby() {
         if (lobby) lobby.style.display = 'flex';
         const msg = err && err.message ? err.message : 'подробности в консоли';
         setLaunchError(`Ошибка запуска: ${msg}`);
-    } catch (err) {
-        console.error('Failed to start match from lobby:', err);
-        if (lobby) lobby.style.display = 'flex';
-        if (launchError) {
-            const msg = err && err.message ? err.message : 'подробности в консоли';
-            launchError.textContent = `Ошибка запуска: ${msg}`;
-            launchError.style.display = 'block';
-        }
     }
 }
 
