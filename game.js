@@ -136,8 +136,11 @@ const CONFIG = {
     PROJECTILE_DRAG: 0.998,
     PROJECTILE_GRAVITY: 0.05,
     MAX_PARTICLES: 600, 
+    MIN_PARTICLES_BUDGET: 220,
     WIN_LIMIT: 10,
     MAX_INVENTORY: 7,
+    MAX_CRATES_TOTAL: 120,
+    MAX_CRATES_ACTIVE: 40,
     GAME_MODE: 'DM', // 'DM', 'TDM', 'CTF'
     CTF_RESPAWN_TIME: 1200, // 20 seconds * 60 fps
     SPATIAL_GRID_SIZE: 200,
@@ -524,14 +527,20 @@ class ParticleSystem {
         this.freeParticles = [];
         this.activeParticles = [];
         this.activeCount = 0;
+        this.maxActive = CONFIG.MAX_PARTICLES;
         for(let i=0; i<CONFIG.MAX_PARTICLES; i++) {
             const particle = new Particle();
             this.pool.push(particle);
             this.freeParticles.push(particle);
         }
     }
+    setBudget(limit) {
+        const capped = Math.max(CONFIG.MIN_PARTICLES_BUDGET, Math.min(CONFIG.MAX_PARTICLES, limit | 0));
+        this.maxActive = capped;
+    }
+
     emit(pos, vel, life, color, type) {
-        if (this.freeParticles.length === 0) return;
+        if (this.activeCount >= this.maxActive || this.freeParticles.length === 0) return;
         const particle = this.freeParticles.pop();
         particle.spawn(pos, vel, life, color, type);
         this.activeParticles.push(particle);
@@ -548,6 +557,10 @@ class ParticleSystem {
                 this.activeCount = Math.max(0, this.activeCount - 1);
                 this.freeParticles.push(particle);
                 continue;
+            }
+            const perfLevel = game ? (game.perfLevel || 0) : 0;
+            if (perfLevel >= 2 && (particle.type === 'normal' || particle.type === 'blood' || particle.type === 'chunk')) {
+                if (((game.tick + i) & (perfLevel >= 3 ? 3 : 1)) !== 0) continue;
             }
             particle.draw(ctx, game.camera); // Pass camera for culling
         }
@@ -2405,6 +2418,24 @@ class Bot extends Character {
         this.campingTimer = 0;
         this.lastSectorPos = new Vector2(x, y);
         this.lastAiTick = -1;
+        this.lastLosTick = -999;
+        this.lastHasLos = false;
+        this.strafeDir = Math.random() > 0.5 ? 1 : -1;
+        this.strafeTimer = 40 + Math.floor(Math.random() * 70);
+
+        const roleProfile = {
+            ATTACKER: { preferredRange: 200, minRange: 90, maxRange: 320, aggression: 1.0, pickupBias: 0.8, holdGround: 0.15 },
+            DEFENDER: { preferredRange: 300, minRange: 130, maxRange: 430, aggression: 0.75, pickupBias: 0.5, holdGround: 0.55 },
+            ROAMER: { preferredRange: 250, minRange: 120, maxRange: 380, aggression: 0.9, pickupBias: 0.9, holdGround: 0.25 },
+            CAMPER: { preferredRange: 360, minRange: 180, maxRange: 520, aggression: 0.6, pickupBias: 0.3, holdGround: 0.8 }
+        };
+        const profile = roleProfile[this.role] || roleProfile.ROAMER;
+        this.preferredRange = profile.preferredRange;
+        this.minFightRange = profile.minRange;
+        this.maxFightRange = profile.maxRange;
+        this.aggression = profile.aggression;
+        this.pickupBias = profile.pickupBias;
+        this.holdGroundChance = profile.holdGround;
     }
     
     aiUpdate(terrain, entities, projectiles, game, cache) {
@@ -2417,7 +2448,7 @@ class Bot extends Character {
             if (distSq(this.pos, this.lastSectorPos) < 200 * 200) {
                 // Forced Move
                 this.roamSpot = new Vector2(Math.random()*CONFIG.WORLD_WIDTH, Math.random() * (CONFIG.WORLD_HEIGHT - 300));
-                this.currentTarget = { pos: this.roamSpot, isStatic: true };
+                this.currentTarget = { pos: this.roamSpot, isStatic: true, targetType: 'roam', stopDistance: 30 };
                 this.decisionTimer = 180; // Force follow this for 3 sec
             }
             this.lastSectorPos = this.pos.clone();
@@ -2452,35 +2483,60 @@ class Bot extends Character {
 
         if (!this.currentTarget) return;
 
-        let targetPos = this.currentTarget.pos;
-        if (this.currentTarget.isStatic) targetPos = targetPos.add(this.moveOffset);
-        
-        let aimPoint = this.currentTarget.pos;
-        if (this.currentTarget instanceof Character) {
-             aimPoint = aimPoint.add(this.currentTarget.vel.mult(10));
+        let targetPosX = this.currentTarget.pos.x;
+        let targetPosY = this.currentTarget.pos.y;
+        if (this.currentTarget.isStatic && this.currentTarget.targetType === 'roam') {
+            targetPosX += this.moveOffset.x;
         }
-        this.input.aimTarget = aimPoint;
 
-        let distSqToTarget = distSq(this.pos, targetPos);
-        
-        // Movement Logic
-        // If enemy is too close, maybe move AWAY?
-        if (closeEnemy && distSqToTarget < 150 * 150) {
-             // Retreat logic: Move away from enemy
-             if (targetPos.x > this.pos.x) { this.input.right = false; this.input.left = true; } // Enemy right, go left
-             else { this.input.right = true; this.input.left = false; } // Enemy left, go right
-        } else if (distSqToTarget > 50 * 50) {
-            if (targetPos.x > this.pos.x + 20) { this.input.right = true; this.input.left = false; }
-            else if (targetPos.x < this.pos.x - 20) { this.input.right = false; this.input.left = true; }
-            else { this.input.right = false; this.input.left = false; }
+        let aimX = this.currentTarget.pos.x;
+        let aimY = this.currentTarget.pos.y;
+        if (this.currentTarget instanceof Character) {
+            aimX += this.currentTarget.vel.x * 10;
+            aimY += this.currentTarget.vel.y * 10;
+        }
+        this.input.aimTarget = new Vector2(aimX, aimY);
+
+        const dx = targetPosX - this.pos.x;
+        const dy = targetPosY - this.pos.y;
+        const distSqToTarget = dx * dx + dy * dy;
+        const stopDist = this.currentTarget.stopDistance || 18;
+        const isEnemyTarget = this.currentTarget instanceof Character;
+
+        this.input.left = false;
+        this.input.right = false;
+
+        if (isEnemyTarget && !this.currentTarget.dead) {
+            const minFightSq = this.minFightRange * this.minFightRange;
+            const maxFightSq = this.maxFightRange * this.maxFightRange;
+            if (distSqToTarget < minFightSq) {
+                if (dx > 0) this.input.left = true;
+                else this.input.right = true;
+            } else if (distSqToTarget > maxFightSq) {
+                if (dx > 16) this.input.right = true;
+                else if (dx < -16) this.input.left = true;
+            } else {
+                this.strafeTimer--;
+                if (this.strafeTimer <= 0) {
+                    this.strafeTimer = 40 + ((this.id * 17 + game.tick) % 70);
+                    this.strafeDir *= -1;
+                }
+                if (Math.random() > this.holdGroundChance) {
+                    if (this.strafeDir > 0) this.input.right = true;
+                    else this.input.left = true;
+                }
+            }
         } else {
-             this.input.right = false; this.input.left = false;
+            if (distSqToTarget > stopDist * stopDist) {
+                if (dx > 12) this.input.right = true;
+                else if (dx < -12) this.input.left = true;
+            }
         }
         
         // Jump & Stuck/Tunneling Logic
         let ahead = this.facingRight ? 40 : -40;
         let hasWall = terrain.isSolid(this.pos.x + ahead, this.pos.y);
-        let needsUp = targetPos.y < this.pos.y - 80;
+        let needsUp = targetPosY < this.pos.y - 80;
         
         if (this.grounded) {
              // Check if stuck (Aggressive check)
@@ -2519,17 +2575,27 @@ class Bot extends Character {
         
         // Combat Logic
         if (this.currentTarget instanceof Character && !this.currentTarget.dead) {
-            let enemyDistSq = distSq(this.pos, this.currentTarget.pos);
-            // Don't shoot self if wall is close unless stuck
-            let wallFace = terrain.isSolid(this.pos.x + (this.facingRight?20:-20), this.pos.y);
-            
-            if (enemyDistSq < 700 * 700 && (!wallFace || this.stuckTimer > 30)) {
-                 this.input.shoot = true;
-                 // Add inaccuracy based on distance
-                 let jitter = (Math.sqrt(enemyDistSq) / 100) * 5;
-                 this.input.aimTarget = this.currentTarget.pos.add(new Vector2((Math.random()-0.5)*jitter, (Math.random()-0.5)*jitter)); 
+            const enemyDistSq = distSq(this.pos, this.currentTarget.pos);
+            const shootRange = (this.maxFightRange + 220) * (this.maxFightRange + 220);
+            const shouldCheckLos = (game.tick - this.lastLosTick) >= 8;
+            if (shouldCheckLos) {
+                const start = new Vector2(this.pos.x, this.pos.y - 18);
+                const end = new Vector2(this.currentTarget.pos.x, this.currentTarget.pos.y - 18);
+                this.lastHasLos = !terrain.raycast(start, end);
+                this.lastLosTick = game.tick;
+            }
+
+            const closeFightSq = 180 * 180;
+            if (enemyDistSq < shootRange && (this.lastHasLos || enemyDistSq < closeFightSq)) {
+                this.input.shoot = true;
+                const jitterBase = this.role === 'CAMPER' ? 1.2 : 2.4;
+                const jitter = jitterBase + (Math.sqrt(enemyDistSq) / 180) * (this.role === 'ATTACKER' ? 1.8 : 2.6);
+                this.input.aimTarget = new Vector2(
+                    this.currentTarget.pos.x + (Math.random() - 0.5) * jitter,
+                    this.currentTarget.pos.y + (Math.random() - 0.5) * jitter
+                );
             } else {
-                 this.input.shoot = false;
+                this.input.shoot = false;
             }
         } else if (!hasWall && this.stuckTimer < 30) {
             this.input.shoot = false;
@@ -2551,13 +2617,13 @@ class Bot extends Character {
                 }
             }
             if (nearestMedkit) {
-                this.currentTarget = { pos: nearestMedkit.pos, isStatic: true };
+                this.currentTarget = { pos: nearestMedkit.pos, isStatic: true, targetType: 'pickup', stopDistance: 8 };
                 return;
             }
         }
 
         // --- 2. LOOTING: Find Weapon if I only have Pistol ---
-        if (this.inventory.length === 1) {
+        if (this.inventory.length === 1 && Math.random() < this.pickupBias) {
              let nearestCrate = null;
              let nearestCrateDist = Infinity;
              const weaponCrates = cache.weaponCrates;
@@ -2571,7 +2637,7 @@ class Bot extends Character {
              }
              // Only go if it's reasonably close (don't cross entire map just for loot if fighting)
              if (nearestCrate && nearestCrateDist < 800 * 800) {
-                 this.currentTarget = { pos: nearestCrate.pos, isStatic: true };
+                 this.currentTarget = { pos: nearestCrate.pos, isStatic: true, targetType: 'pickup', stopDistance: 8 };
                  return;
              }
         }
@@ -2607,20 +2673,20 @@ class Bot extends Character {
                 return;
             }
             if (enemyFlag.carrier === this) {
-                this.currentTarget = { pos: myFlag.homePos, isStatic: true };
+                this.currentTarget = { pos: myFlag.homePos, isStatic: true, targetType: 'flag-home', stopDistance: 20 };
                 return;
             }
             if (this.role === 'DEFENDER') {
                 if (randomVisibleEnemy && distSq(this.pos, randomVisibleEnemy.pos) < 400 * 400) {
                     this.currentTarget = randomVisibleEnemy;
                 } else {
-                    this.currentTarget = { pos: myFlag.homePos, isStatic: true };
+                    this.currentTarget = { pos: myFlag.homePos, isStatic: true, targetType: 'defend', stopDistance: 32 };
                 }
             } else { 
                 if (randomVisibleEnemy && distSq(this.pos, randomVisibleEnemy.pos) < 300 * 300) {
                     this.currentTarget = randomVisibleEnemy;
                 } else {
-                    this.currentTarget = enemyFlag.carrier ? enemyFlag.carrier : { pos: enemyFlag.pos, isStatic: true }; 
+                    this.currentTarget = enemyFlag.carrier ? enemyFlag.carrier : { pos: enemyFlag.pos, isStatic: true, targetType: 'flag', stopDistance: 14 }; 
                 }
             }
         } 
@@ -2638,7 +2704,7 @@ class Bot extends Character {
                          this.roamSpot = new Vector2(Math.random()*CONFIG.WORLD_WIDTH, Math.random() * (CONFIG.WORLD_HEIGHT - 300));
                          this.decisionTimer = 300;
                      }
-                     this.currentTarget = { pos: this.roamSpot, isStatic: true };
+                     this.currentTarget = { pos: this.roamSpot, isStatic: true, targetType: 'roam', stopDistance: 30 };
                  }
              }
         }
@@ -2682,6 +2748,8 @@ class Game {
         this.lastHpUiValue = -1;
         this.perfLevel = 0;
         this.maxProjectiles = 650;
+        this.dynamicProjectileBudget = 650;
+        this.dynamicParticleBudget = CONFIG.MAX_PARTICLES;
         this.dom = {
             hpDisplay: document.getElementById('hp-display'),
             statsBody: document.getElementById('stats-body'),
@@ -2734,10 +2802,15 @@ class Game {
 
     resize() {
         const container = document.getElementById('gameContainer');
-        container.style.width = `${window.innerWidth}px`;
-        container.style.height = `${window.innerHeight}px`;
-        this.renderer.resize(CONFIG.VIEWPORT_WIDTH, CONFIG.VIEWPORT_HEIGHT);
-        this.ctx = this.renderer.getContext();
+        if (container) {
+            container.style.width = `${window.innerWidth}px`;
+            container.style.height = `${window.innerHeight}px`;
+        }
+
+        this.canvas.width = CONFIG.VIEWPORT_WIDTH;
+        this.canvas.height = CONFIG.VIEWPORT_HEIGHT;
+        this.ctx = this.canvas.getContext('2d');
+
         this.noiseCanvas.width = 256;
         this.noiseCanvas.height = 256;
         this.vignetteCanvas.width = CONFIG.VIEWPORT_WIDTH;
@@ -2874,10 +2947,29 @@ class Game {
     }
 
     spawnCrate() {
-        let type = 'weapon'; if (Math.random() < 0.3) type = Math.random() > 0.5 ? 'medkit' : 'powerup';
-        this.crates.push(new Crate(Math.random()*(CONFIG.WORLD_WIDTH-800)+400, -50, type)); 
+        if (this.activeCrates && this.activeCrates.length >= CONFIG.MAX_CRATES_ACTIVE) return;
+        if (this.crates.length >= CONFIG.MAX_CRATES_TOTAL) {
+            this.compactCrates();
+            if (this.crates.length >= CONFIG.MAX_CRATES_TOTAL) return;
+        }
+
+        let type = 'weapon';
+        if (Math.random() < 0.3) type = Math.random() > 0.5 ? 'medkit' : 'powerup';
+        this.crates.push(new Crate(Math.random() * (CONFIG.WORLD_WIDTH - 800) + 400, -50, type));
     }
     
+
+    compactCrates() {
+        if (!this.crates || this.crates.length === 0) return;
+        let write = 0;
+        for (let i = 0; i < this.crates.length; i++) {
+            const crate = this.crates[i];
+            if (!crate || !crate.active) continue;
+            this.crates[write++] = crate;
+        }
+        this.crates.length = write;
+    }
+
     scoreTeam(teamId, amt) {
         this.scores[teamId] += amt;
         if (this.dom.scoreBlue) this.dom.scoreBlue.innerText = this.scores[1];
@@ -3143,7 +3235,15 @@ class Game {
             this.projectiles.splice(0, this.projectiles.length - this.maxProjectiles);
         }
         const projectileCount = this.projectiles.length;
-        this.perfLevel = projectileCount > 300 ? 2 : (projectileCount > 170 ? 1 : 0);
+        const activeParticleCount = this.particleSystem ? this.particleSystem.activeCount : 0;
+        const aliveCountApprox = this.aliveEntities ? this.aliveEntities.length : this.entities.length;
+        const perfScore = projectileCount + activeParticleCount * 0.6 + aliveCountApprox * 4;
+        this.perfLevel = perfScore > 620 ? 3 : (perfScore > 420 ? 2 : (perfScore > 240 ? 1 : 0));
+
+        this.dynamicProjectileBudget = this.perfLevel >= 3 ? 440 : (this.perfLevel === 2 ? 520 : (this.perfLevel === 1 ? 600 : 700));
+        this.maxProjectiles = this.dynamicProjectileBudget;
+        this.dynamicParticleBudget = this.perfLevel >= 3 ? 260 : (this.perfLevel === 2 ? 360 : (this.perfLevel === 1 ? 480 : CONFIG.MAX_PARTICLES));
+        this.particleSystem.setBudget(this.dynamicParticleBudget);
 
         this.aliveEntities.length = 0;
         this.entityById.clear();
@@ -3212,7 +3312,8 @@ class Game {
             this.player.input.aimTarget = this.input.mouse.worldPos;
         }
         
-        const aiStride = Math.max(1, Math.ceil(this.aliveEntities.length / 8));
+        const aiLoadPenalty = this.perfLevel >= 2 ? (this.perfLevel === 3 ? 3 : 2) : 1;
+        const aiStride = Math.max(1, Math.ceil(this.aliveEntities.length / 8) * aiLoadPenalty);
         const farBotUpdateStride = this.aliveEntities.length > 24 ? 3 : (this.aliveEntities.length > 14 ? 2 : 1);
         const farBotDistSq = 1400 * 1400;
         for (let i = 0; i < this.entities.length; i++) {
@@ -3235,11 +3336,14 @@ class Game {
         }
         
         for (let i = 0; i < this.crates.length; i++) this.crates[i].update(this.terrain);
+        if (this.tick % 120 === 0 && this.crates.length > CONFIG.MAX_CRATES_ACTIVE) this.compactCrates();
         for (let i = 0; i < this.flags.length; i++) this.flags[i].update(this.terrain, this.entities, this);
         let projectileFarStride = 1;
         if (this.projectiles.length > 120) projectileFarStride = 2;
         if (this.projectiles.length > 220) projectileFarStride = 3;
         if (this.projectiles.length > 320) projectileFarStride = 4;
+        if (this.perfLevel >= 2) projectileFarStride += 1;
+        if (this.perfLevel >= 3) projectileFarStride += 1;
         const projectileFarDistSq = 1700 * 1700;
         for (let i = this.projectiles.length - 1; i >= 0; i--) { 
             let p = this.projectiles[i];
@@ -3281,16 +3385,17 @@ class Game {
         // CAMERA LOGIC WITH MOUSE OFFSET
         let target = this.cameraTarget || this.player;
         if (target) {
-            let targetPos = target.pos.clone();
-            
+            let targetX = target.pos.x;
+            let targetY = target.pos.y;
+
             // Add Mouse Offset
             if (!this.roundOver && !this.gameOver && target === this.player) {
-                let mouseOffset = this.input.mouse.screenPos.sub(new Vector2(CONFIG.VIEWPORT_WIDTH/2, CONFIG.VIEWPORT_HEIGHT/2));
-                targetPos = targetPos.add(mouseOffset.mult(0.3)); // Offset strength
+                targetX += (this.input.mouse.screenPos.x - CONFIG.VIEWPORT_WIDTH / 2) * 0.3;
+                targetY += (this.input.mouse.screenPos.y - CONFIG.VIEWPORT_HEIGHT / 2) * 0.3;
             }
 
-            let tx = Math.max(0, Math.min(targetPos.x - CONFIG.VIEWPORT_WIDTH/2, CONFIG.WORLD_WIDTH - CONFIG.VIEWPORT_WIDTH));
-            let ty = Math.max(0, Math.min(targetPos.y - CONFIG.VIEWPORT_HEIGHT/2, CONFIG.WORLD_HEIGHT - CONFIG.VIEWPORT_HEIGHT));
+            let tx = Math.max(0, Math.min(targetX - CONFIG.VIEWPORT_WIDTH / 2, CONFIG.WORLD_WIDTH - CONFIG.VIEWPORT_WIDTH));
+            let ty = Math.max(0, Math.min(targetY - CONFIG.VIEWPORT_HEIGHT / 2, CONFIG.WORLD_HEIGHT - CONFIG.VIEWPORT_HEIGHT));
             this.camera.x += (tx - this.camera.x) * 0.1; 
             this.camera.y += (ty - this.camera.y) * 0.1;
             
@@ -3535,14 +3640,6 @@ function startGameFromLobby() {
     setLaunchError('');
 
     try {
-    const lobby = document.getElementById('lobby-screen');
-    const launchError = document.getElementById('lobby-launch-error');
-    if (launchError) {
-        launchError.textContent = '';
-        launchError.style.display = 'none';
-    }
-
-    try {
         if (lobbyName && startName) startName.value = lobbyName.value.trim();
         updateLobbyUI();
         const instance = ensureGameInstance();
@@ -3553,14 +3650,6 @@ function startGameFromLobby() {
         if (lobby) lobby.style.display = 'flex';
         const msg = err && err.message ? err.message : 'подробности в консоли';
         setLaunchError(`Ошибка запуска: ${msg}`);
-    } catch (err) {
-        console.error('Failed to start match from lobby:', err);
-        if (lobby) lobby.style.display = 'flex';
-        if (launchError) {
-            const msg = err && err.message ? err.message : 'подробности в консоли';
-            launchError.textContent = `Ошибка запуска: ${msg}`;
-            launchError.style.display = 'block';
-        }
     }
 }
 
