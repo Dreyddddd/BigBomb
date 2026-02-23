@@ -136,6 +136,7 @@ const CONFIG = {
     PROJECTILE_DRAG: 0.998,
     PROJECTILE_GRAVITY: 0.05,
     MAX_PARTICLES: 600, 
+    MIN_PARTICLES_BUDGET: 220,
     WIN_LIMIT: 10,
     MAX_INVENTORY: 7,
     MAX_CRATES_TOTAL: 120,
@@ -526,14 +527,20 @@ class ParticleSystem {
         this.freeParticles = [];
         this.activeParticles = [];
         this.activeCount = 0;
+        this.maxActive = CONFIG.MAX_PARTICLES;
         for(let i=0; i<CONFIG.MAX_PARTICLES; i++) {
             const particle = new Particle();
             this.pool.push(particle);
             this.freeParticles.push(particle);
         }
     }
+    setBudget(limit) {
+        const capped = Math.max(CONFIG.MIN_PARTICLES_BUDGET, Math.min(CONFIG.MAX_PARTICLES, limit | 0));
+        this.maxActive = capped;
+    }
+
     emit(pos, vel, life, color, type) {
-        if (this.freeParticles.length === 0) return;
+        if (this.activeCount >= this.maxActive || this.freeParticles.length === 0) return;
         const particle = this.freeParticles.pop();
         particle.spawn(pos, vel, life, color, type);
         this.activeParticles.push(particle);
@@ -550,6 +557,10 @@ class ParticleSystem {
                 this.activeCount = Math.max(0, this.activeCount - 1);
                 this.freeParticles.push(particle);
                 continue;
+            }
+            const perfLevel = game ? (game.perfLevel || 0) : 0;
+            if (perfLevel >= 2 && (particle.type === 'normal' || particle.type === 'blood' || particle.type === 'chunk')) {
+                if (((game.tick + i) & (perfLevel >= 3 ? 3 : 1)) !== 0) continue;
             }
             particle.draw(ctx, game.camera); // Pass camera for culling
         }
@@ -2684,6 +2695,8 @@ class Game {
         this.lastHpUiValue = -1;
         this.perfLevel = 0;
         this.maxProjectiles = 650;
+        this.dynamicProjectileBudget = 650;
+        this.dynamicParticleBudget = CONFIG.MAX_PARTICLES;
         this.dom = {
             hpDisplay: document.getElementById('hp-display'),
             statsBody: document.getElementById('stats-body'),
@@ -3169,7 +3182,15 @@ class Game {
             this.projectiles.splice(0, this.projectiles.length - this.maxProjectiles);
         }
         const projectileCount = this.projectiles.length;
-        this.perfLevel = projectileCount > 300 ? 2 : (projectileCount > 170 ? 1 : 0);
+        const activeParticleCount = this.particleSystem ? this.particleSystem.activeCount : 0;
+        const aliveCountApprox = this.aliveEntities ? this.aliveEntities.length : this.entities.length;
+        const perfScore = projectileCount + activeParticleCount * 0.6 + aliveCountApprox * 4;
+        this.perfLevel = perfScore > 620 ? 3 : (perfScore > 420 ? 2 : (perfScore > 240 ? 1 : 0));
+
+        this.dynamicProjectileBudget = this.perfLevel >= 3 ? 440 : (this.perfLevel === 2 ? 520 : (this.perfLevel === 1 ? 600 : 700));
+        this.maxProjectiles = this.dynamicProjectileBudget;
+        this.dynamicParticleBudget = this.perfLevel >= 3 ? 260 : (this.perfLevel === 2 ? 360 : (this.perfLevel === 1 ? 480 : CONFIG.MAX_PARTICLES));
+        this.particleSystem.setBudget(this.dynamicParticleBudget);
 
         this.aliveEntities.length = 0;
         this.entityById.clear();
@@ -3238,7 +3259,8 @@ class Game {
             this.player.input.aimTarget = this.input.mouse.worldPos;
         }
         
-        const aiStride = Math.max(1, Math.ceil(this.aliveEntities.length / 8));
+        const aiLoadPenalty = this.perfLevel >= 2 ? (this.perfLevel === 3 ? 3 : 2) : 1;
+        const aiStride = Math.max(1, Math.ceil(this.aliveEntities.length / 8) * aiLoadPenalty);
         const farBotUpdateStride = this.aliveEntities.length > 24 ? 3 : (this.aliveEntities.length > 14 ? 2 : 1);
         const farBotDistSq = 1400 * 1400;
         for (let i = 0; i < this.entities.length; i++) {
@@ -3267,6 +3289,8 @@ class Game {
         if (this.projectiles.length > 120) projectileFarStride = 2;
         if (this.projectiles.length > 220) projectileFarStride = 3;
         if (this.projectiles.length > 320) projectileFarStride = 4;
+        if (this.perfLevel >= 2) projectileFarStride += 1;
+        if (this.perfLevel >= 3) projectileFarStride += 1;
         const projectileFarDistSq = 1700 * 1700;
         for (let i = this.projectiles.length - 1; i >= 0; i--) { 
             let p = this.projectiles[i];
