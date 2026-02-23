@@ -2418,6 +2418,24 @@ class Bot extends Character {
         this.campingTimer = 0;
         this.lastSectorPos = new Vector2(x, y);
         this.lastAiTick = -1;
+        this.lastLosTick = -999;
+        this.lastHasLos = false;
+        this.strafeDir = Math.random() > 0.5 ? 1 : -1;
+        this.strafeTimer = 40 + Math.floor(Math.random() * 70);
+
+        const roleProfile = {
+            ATTACKER: { preferredRange: 200, minRange: 90, maxRange: 320, aggression: 1.0, pickupBias: 0.8, holdGround: 0.15 },
+            DEFENDER: { preferredRange: 300, minRange: 130, maxRange: 430, aggression: 0.75, pickupBias: 0.5, holdGround: 0.55 },
+            ROAMER: { preferredRange: 250, minRange: 120, maxRange: 380, aggression: 0.9, pickupBias: 0.9, holdGround: 0.25 },
+            CAMPER: { preferredRange: 360, minRange: 180, maxRange: 520, aggression: 0.6, pickupBias: 0.3, holdGround: 0.8 }
+        };
+        const profile = roleProfile[this.role] || roleProfile.ROAMER;
+        this.preferredRange = profile.preferredRange;
+        this.minFightRange = profile.minRange;
+        this.maxFightRange = profile.maxRange;
+        this.aggression = profile.aggression;
+        this.pickupBias = profile.pickupBias;
+        this.holdGroundChance = profile.holdGround;
     }
     
     aiUpdate(terrain, entities, projectiles, game, cache) {
@@ -2430,7 +2448,7 @@ class Bot extends Character {
             if (distSq(this.pos, this.lastSectorPos) < 200 * 200) {
                 // Forced Move
                 this.roamSpot = new Vector2(Math.random()*CONFIG.WORLD_WIDTH, Math.random() * (CONFIG.WORLD_HEIGHT - 300));
-                this.currentTarget = { pos: this.roamSpot, isStatic: true };
+                this.currentTarget = { pos: this.roamSpot, isStatic: true, targetType: 'roam', stopDistance: 30 };
                 this.decisionTimer = 180; // Force follow this for 3 sec
             }
             this.lastSectorPos = this.pos.clone();
@@ -2465,35 +2483,60 @@ class Bot extends Character {
 
         if (!this.currentTarget) return;
 
-        let targetPos = this.currentTarget.pos;
-        if (this.currentTarget.isStatic) targetPos = targetPos.add(this.moveOffset);
-        
-        let aimPoint = this.currentTarget.pos;
-        if (this.currentTarget instanceof Character) {
-             aimPoint = aimPoint.add(this.currentTarget.vel.mult(10));
+        let targetPosX = this.currentTarget.pos.x;
+        let targetPosY = this.currentTarget.pos.y;
+        if (this.currentTarget.isStatic && this.currentTarget.targetType === 'roam') {
+            targetPosX += this.moveOffset.x;
         }
-        this.input.aimTarget = aimPoint;
 
-        let distSqToTarget = distSq(this.pos, targetPos);
-        
-        // Movement Logic
-        // If enemy is too close, maybe move AWAY?
-        if (closeEnemy && distSqToTarget < 150 * 150) {
-             // Retreat logic: Move away from enemy
-             if (targetPos.x > this.pos.x) { this.input.right = false; this.input.left = true; } // Enemy right, go left
-             else { this.input.right = true; this.input.left = false; } // Enemy left, go right
-        } else if (distSqToTarget > 50 * 50) {
-            if (targetPos.x > this.pos.x + 20) { this.input.right = true; this.input.left = false; }
-            else if (targetPos.x < this.pos.x - 20) { this.input.right = false; this.input.left = true; }
-            else { this.input.right = false; this.input.left = false; }
+        let aimX = this.currentTarget.pos.x;
+        let aimY = this.currentTarget.pos.y;
+        if (this.currentTarget instanceof Character) {
+            aimX += this.currentTarget.vel.x * 10;
+            aimY += this.currentTarget.vel.y * 10;
+        }
+        this.input.aimTarget = new Vector2(aimX, aimY);
+
+        const dx = targetPosX - this.pos.x;
+        const dy = targetPosY - this.pos.y;
+        const distSqToTarget = dx * dx + dy * dy;
+        const stopDist = this.currentTarget.stopDistance || 18;
+        const isEnemyTarget = this.currentTarget instanceof Character;
+
+        this.input.left = false;
+        this.input.right = false;
+
+        if (isEnemyTarget && !this.currentTarget.dead) {
+            const minFightSq = this.minFightRange * this.minFightRange;
+            const maxFightSq = this.maxFightRange * this.maxFightRange;
+            if (distSqToTarget < minFightSq) {
+                if (dx > 0) this.input.left = true;
+                else this.input.right = true;
+            } else if (distSqToTarget > maxFightSq) {
+                if (dx > 16) this.input.right = true;
+                else if (dx < -16) this.input.left = true;
+            } else {
+                this.strafeTimer--;
+                if (this.strafeTimer <= 0) {
+                    this.strafeTimer = 40 + ((this.id * 17 + game.tick) % 70);
+                    this.strafeDir *= -1;
+                }
+                if (Math.random() > this.holdGroundChance) {
+                    if (this.strafeDir > 0) this.input.right = true;
+                    else this.input.left = true;
+                }
+            }
         } else {
-             this.input.right = false; this.input.left = false;
+            if (distSqToTarget > stopDist * stopDist) {
+                if (dx > 12) this.input.right = true;
+                else if (dx < -12) this.input.left = true;
+            }
         }
         
         // Jump & Stuck/Tunneling Logic
         let ahead = this.facingRight ? 40 : -40;
         let hasWall = terrain.isSolid(this.pos.x + ahead, this.pos.y);
-        let needsUp = targetPos.y < this.pos.y - 80;
+        let needsUp = targetPosY < this.pos.y - 80;
         
         if (this.grounded) {
              // Check if stuck (Aggressive check)
@@ -2532,17 +2575,27 @@ class Bot extends Character {
         
         // Combat Logic
         if (this.currentTarget instanceof Character && !this.currentTarget.dead) {
-            let enemyDistSq = distSq(this.pos, this.currentTarget.pos);
-            // Don't shoot self if wall is close unless stuck
-            let wallFace = terrain.isSolid(this.pos.x + (this.facingRight?20:-20), this.pos.y);
-            
-            if (enemyDistSq < 700 * 700 && (!wallFace || this.stuckTimer > 30)) {
-                 this.input.shoot = true;
-                 // Add inaccuracy based on distance
-                 let jitter = (Math.sqrt(enemyDistSq) / 100) * 5;
-                 this.input.aimTarget = this.currentTarget.pos.add(new Vector2((Math.random()-0.5)*jitter, (Math.random()-0.5)*jitter)); 
+            const enemyDistSq = distSq(this.pos, this.currentTarget.pos);
+            const shootRange = (this.maxFightRange + 220) * (this.maxFightRange + 220);
+            const shouldCheckLos = (game.tick - this.lastLosTick) >= 8;
+            if (shouldCheckLos) {
+                const start = new Vector2(this.pos.x, this.pos.y - 18);
+                const end = new Vector2(this.currentTarget.pos.x, this.currentTarget.pos.y - 18);
+                this.lastHasLos = !terrain.raycast(start, end);
+                this.lastLosTick = game.tick;
+            }
+
+            const closeFightSq = 180 * 180;
+            if (enemyDistSq < shootRange && (this.lastHasLos || enemyDistSq < closeFightSq)) {
+                this.input.shoot = true;
+                const jitterBase = this.role === 'CAMPER' ? 1.2 : 2.4;
+                const jitter = jitterBase + (Math.sqrt(enemyDistSq) / 180) * (this.role === 'ATTACKER' ? 1.8 : 2.6);
+                this.input.aimTarget = new Vector2(
+                    this.currentTarget.pos.x + (Math.random() - 0.5) * jitter,
+                    this.currentTarget.pos.y + (Math.random() - 0.5) * jitter
+                );
             } else {
-                 this.input.shoot = false;
+                this.input.shoot = false;
             }
         } else if (!hasWall && this.stuckTimer < 30) {
             this.input.shoot = false;
@@ -2564,13 +2617,13 @@ class Bot extends Character {
                 }
             }
             if (nearestMedkit) {
-                this.currentTarget = { pos: nearestMedkit.pos, isStatic: true };
+                this.currentTarget = { pos: nearestMedkit.pos, isStatic: true, targetType: 'pickup', stopDistance: 8 };
                 return;
             }
         }
 
         // --- 2. LOOTING: Find Weapon if I only have Pistol ---
-        if (this.inventory.length === 1) {
+        if (this.inventory.length === 1 && Math.random() < this.pickupBias) {
              let nearestCrate = null;
              let nearestCrateDist = Infinity;
              const weaponCrates = cache.weaponCrates;
@@ -2584,7 +2637,7 @@ class Bot extends Character {
              }
              // Only go if it's reasonably close (don't cross entire map just for loot if fighting)
              if (nearestCrate && nearestCrateDist < 800 * 800) {
-                 this.currentTarget = { pos: nearestCrate.pos, isStatic: true };
+                 this.currentTarget = { pos: nearestCrate.pos, isStatic: true, targetType: 'pickup', stopDistance: 8 };
                  return;
              }
         }
@@ -2620,20 +2673,20 @@ class Bot extends Character {
                 return;
             }
             if (enemyFlag.carrier === this) {
-                this.currentTarget = { pos: myFlag.homePos, isStatic: true };
+                this.currentTarget = { pos: myFlag.homePos, isStatic: true, targetType: 'flag-home', stopDistance: 20 };
                 return;
             }
             if (this.role === 'DEFENDER') {
                 if (randomVisibleEnemy && distSq(this.pos, randomVisibleEnemy.pos) < 400 * 400) {
                     this.currentTarget = randomVisibleEnemy;
                 } else {
-                    this.currentTarget = { pos: myFlag.homePos, isStatic: true };
+                    this.currentTarget = { pos: myFlag.homePos, isStatic: true, targetType: 'defend', stopDistance: 32 };
                 }
             } else { 
                 if (randomVisibleEnemy && distSq(this.pos, randomVisibleEnemy.pos) < 300 * 300) {
                     this.currentTarget = randomVisibleEnemy;
                 } else {
-                    this.currentTarget = enemyFlag.carrier ? enemyFlag.carrier : { pos: enemyFlag.pos, isStatic: true }; 
+                    this.currentTarget = enemyFlag.carrier ? enemyFlag.carrier : { pos: enemyFlag.pos, isStatic: true, targetType: 'flag', stopDistance: 14 }; 
                 }
             }
         } 
@@ -2651,7 +2704,7 @@ class Bot extends Character {
                          this.roamSpot = new Vector2(Math.random()*CONFIG.WORLD_WIDTH, Math.random() * (CONFIG.WORLD_HEIGHT - 300));
                          this.decisionTimer = 300;
                      }
-                     this.currentTarget = { pos: this.roamSpot, isStatic: true };
+                     this.currentTarget = { pos: this.roamSpot, isStatic: true, targetType: 'roam', stopDistance: 30 };
                  }
              }
         }
