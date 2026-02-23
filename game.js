@@ -3413,17 +3413,35 @@ class Game {
 }
 
 let gameInstance;
-window.onload = () => { gameInstance = new Game(); };
 
-function startGame() { gameInstance.start(); }
-function restartGame() {
-    gameInstance.start();
-    document.getElementById('pause-menu').style.display = 'none';
-    document.getElementById('game-over-screen').style.display = 'none';
-    document.getElementById('round-over-screen').style.display = 'none';
+function ensureGameInstance() {
+    if (gameInstance) return gameInstance;
+    const canvas = document.getElementById('gameCanvas');
+    if (!canvas) throw new Error('gameCanvas not found');
+    gameInstance = new Game();
+    return gameInstance;
 }
-function goToMenu() { gameInstance.goToMenu(); }
-function togglePause() { gameInstance.togglePause(); }
+
+window.addEventListener('DOMContentLoaded', () => {
+    ensureGameInstance();
+});
+
+function startGame() {
+    ensureGameInstance().start();
+}
+
+function restartGame() {
+    ensureGameInstance().start();
+    const pause = document.getElementById('pause-menu');
+    const gameOver = document.getElementById('game-over-screen');
+    const roundOver = document.getElementById('round-over-screen');
+    if (pause) pause.style.display = 'none';
+    if (gameOver) gameOver.style.display = 'none';
+    if (roundOver) roundOver.style.display = 'none';
+}
+
+function goToMenu() { ensureGameInstance().goToMenu(); }
+function togglePause() { ensureGameInstance().togglePause(); }
 
 let previousScreen = 'MENU';
 
@@ -3488,9 +3506,8 @@ function startGameFromLobby() {
     const startName = document.getElementById('nickname-input');
     if (lobbyName && startName) startName.value = lobbyName.value.trim();
     updateLobbyUI();
-    if (gameInstance) {
-        gameInstance.playerCosmetics = getPlayerCosmeticsFromUI(gameInstance.playerCosmetics);
-    }
+    const instance = ensureGameInstance();
+    instance.playerCosmetics = getPlayerCosmeticsFromUI(instance.playerCosmetics);
     const lobby = document.getElementById('lobby-screen');
     const launchError = document.getElementById('lobby-launch-error');
     if (launchError) {
