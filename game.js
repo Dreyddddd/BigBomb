@@ -2734,10 +2734,15 @@ class Game {
 
     resize() {
         const container = document.getElementById('gameContainer');
-        container.style.width = `${window.innerWidth}px`;
-        container.style.height = `${window.innerHeight}px`;
-        this.renderer.resize(CONFIG.VIEWPORT_WIDTH, CONFIG.VIEWPORT_HEIGHT);
-        this.ctx = this.renderer.getContext();
+        if (container) {
+            container.style.width = `${window.innerWidth}px`;
+            container.style.height = `${window.innerHeight}px`;
+        }
+
+        this.canvas.width = CONFIG.VIEWPORT_WIDTH;
+        this.canvas.height = CONFIG.VIEWPORT_HEIGHT;
+        this.ctx = this.canvas.getContext('2d');
+
         this.noiseCanvas.width = 256;
         this.noiseCanvas.height = 256;
         this.vignetteCanvas.width = CONFIG.VIEWPORT_WIDTH;
@@ -3535,14 +3540,6 @@ function startGameFromLobby() {
     setLaunchError('');
 
     try {
-    const lobby = document.getElementById('lobby-screen');
-    const launchError = document.getElementById('lobby-launch-error');
-    if (launchError) {
-        launchError.textContent = '';
-        launchError.style.display = 'none';
-    }
-
-    try {
         if (lobbyName && startName) startName.value = lobbyName.value.trim();
         updateLobbyUI();
         const instance = ensureGameInstance();
@@ -3553,14 +3550,6 @@ function startGameFromLobby() {
         if (lobby) lobby.style.display = 'flex';
         const msg = err && err.message ? err.message : 'подробности в консоли';
         setLaunchError(`Ошибка запуска: ${msg}`);
-    } catch (err) {
-        console.error('Failed to start match from lobby:', err);
-        if (lobby) lobby.style.display = 'flex';
-        if (launchError) {
-            const msg = err && err.message ? err.message : 'подробности в консоли';
-            launchError.textContent = `Ошибка запуска: ${msg}`;
-            launchError.style.display = 'block';
-        }
     }
 }
 
