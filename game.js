@@ -310,6 +310,22 @@ const WeaponType = {
 const PROJECTILE_HITSCAN_TYPES = new Set(['energy', 'blackhole', 'laser', 'highspeed', 'blaster', 'shotgun', 'rapid']);
 const PROJECTILE_FAST_RAYCAST_TYPES = new Set(['highspeed', 'laser']);
 const PROJECTILE_LIGHT_TRAIL_TYPES = new Set(['blaster', 'rapid']);
+const BOT_WEAPON_RANGE = {
+    blaster: 1200,
+    rapid: 950,
+    shotgun: 420,
+    highspeed: 3000,
+    laser: 2600,
+    energy: 1800,
+    drill: 560,
+    explosive: 2000,
+    bounce: 1500,
+    homing: 1800,
+    molotov: 900,
+    blackhole: 1600,
+    nuke: 3000,
+    teleport: 0
+};
 
 const PERK_LIST = [
     { id: 'tenacity', name: 'Упорство', desc: '+10% к максимальному HP' },
@@ -2460,22 +2476,34 @@ class Bot extends Character {
             this.switchWeapon(1); // Switch to better gun if available
         }
         
-        // PROXIMITY ALERT: If enemy is too close, ignore everything and fight
+        // Tactical enemy acquisition: prefer nearby threats but allow mid/long ranged engagement
         const enemies = cache.enemies;
         let closeEnemy = null;
+        let engageEnemy = null;
+        let engageScore = Infinity;
         const closeDistSq = 250 * 250;
+        const engageDist = this.role === 'CAMPER' ? 2600 : (this.role === 'DEFENDER' ? 2200 : 2000);
+        const engageDistSq = engageDist * engageDist;
         for (let i = 0; i < enemies.length; i++) {
             const enemy = enemies[i];
             if (enemy === this || enemy.dead) continue;
-            if (distSq(this.pos, enemy.pos) < closeDistSq) {
-                closeEnemy = enemy;
-                break;
+            const d = distSq(this.pos, enemy.pos);
+            if (d < closeDistSq) closeEnemy = enemy;
+            if (d < engageDistSq) {
+                const score = d + (Math.abs(enemy.pos.y - this.pos.y) * 40);
+                if (score < engageScore) {
+                    engageScore = score;
+                    engageEnemy = enemy;
+                }
             }
         }
-        
+
         if (closeEnemy) {
              this.currentTarget = closeEnemy;
              this.targetSearchTimer = 20; // Lock on
+        } else if (engageEnemy && (!this.currentTarget || this.currentTarget.isStatic || this.currentTarget.dead)) {
+             this.currentTarget = engageEnemy;
+             this.targetSearchTimer = Math.max(12, this.reactionSpeed * 0.6);
         } else if (this.targetSearchTimer <= 0) {
             this.pickTarget(entities, game, cache);
             this.targetSearchTimer = this.reactionSpeed;
@@ -2531,6 +2559,38 @@ class Bot extends Character {
                 if (dx > 12) this.input.right = true;
                 else if (dx < -12) this.input.left = true;
             }
+        // Opportunistic ranged fire: engage any nearby enemy even when objective target is static
+        let forcedShoot = false;
+        let opportunisticEnemy = null;
+        let opportunisticDistSq = Infinity;
+        const opportunisticRange = BOT_WEAPON_RANGE[this.weapon.type] || 900;
+        const opportunisticRangeSq = opportunisticRange * opportunisticRange;
+        for (let i = 0; i < enemies.length; i++) {
+            const enemy = enemies[i];
+            if (!enemy || enemy.dead || enemy === this) continue;
+            const d = distSq(this.pos, enemy.pos);
+            if (d < opportunisticRangeSq && d < opportunisticDistSq) {
+                opportunisticDistSq = d;
+                opportunisticEnemy = enemy;
+            }
+        }
+
+        if (opportunisticEnemy && (game.tick + this.id) % 6 === 0) {
+            const losStart = new Vector2(this.pos.x, this.pos.y - 36);
+            const losEnd = new Vector2(opportunisticEnemy.pos.x, opportunisticEnemy.pos.y - 36);
+            const canSee = !terrain.raycast(losStart, losEnd) || opportunisticDistSq < 240 * 240;
+            if (canSee) {
+                const jitter = 1.5 + Math.sqrt(opportunisticDistSq) / 220;
+                this.input.aimTarget = new Vector2(
+                    opportunisticEnemy.pos.x + (Math.random() - 0.5) * jitter,
+                    opportunisticEnemy.pos.y + (Math.random() - 0.5) * jitter
+                );
+                this.input.shoot = true;
+                forcedShoot = true;
+                if (!(this.currentTarget instanceof Character)) this.currentTarget = opportunisticEnemy;
+            }
+        }
+
         }
         
         // Jump & Stuck/Tunneling Logic
@@ -2576,17 +2636,19 @@ class Bot extends Character {
         // Combat Logic
         if (this.currentTarget instanceof Character && !this.currentTarget.dead) {
             const enemyDistSq = distSq(this.pos, this.currentTarget.pos);
-            const shootRange = (this.maxFightRange + 220) * (this.maxFightRange + 220);
+            const weaponRange = BOT_WEAPON_RANGE[this.weapon.type] || (this.maxFightRange + 220);
+            const shootRange = weaponRange * weaponRange;
             const shouldCheckLos = (game.tick - this.lastLosTick) >= 8;
             if (shouldCheckLos) {
-                const start = new Vector2(this.pos.x, this.pos.y - 18);
-                const end = new Vector2(this.currentTarget.pos.x, this.currentTarget.pos.y - 18);
+                const start = new Vector2(this.pos.x, this.pos.y - 36);
+                const end = new Vector2(this.currentTarget.pos.x, this.currentTarget.pos.y - 36);
                 this.lastHasLos = !terrain.raycast(start, end);
                 this.lastLosTick = game.tick;
             }
 
-            const closeFightSq = 180 * 180;
-            if (enemyDistSq < shootRange && (this.lastHasLos || enemyDistSq < closeFightSq)) {
+            const closeFightSq = 230 * 230;
+            const suppressiveFire = enemyDistSq < shootRange * 0.7 && this.role !== 'CAMPER' && ((game.tick + this.id) % 12 === 0);
+            if (enemyDistSq < shootRange && (this.lastHasLos || enemyDistSq < closeFightSq || suppressiveFire)) {
                 this.input.shoot = true;
                 const jitterBase = this.role === 'CAMPER' ? 1.2 : 2.4;
                 const jitter = jitterBase + (Math.sqrt(enemyDistSq) / 180) * (this.role === 'ATTACKER' ? 1.8 : 2.6);
@@ -2597,7 +2659,7 @@ class Bot extends Character {
             } else {
                 this.input.shoot = false;
             }
-        } else if (!hasWall && this.stuckTimer < 30) {
+        } else if (!hasWall && this.stuckTimer < 30 && !forcedShoot) {
             this.input.shoot = false;
         }
     }
@@ -2647,7 +2709,8 @@ class Bot extends Character {
         let closestEnemyDist = Infinity;
         let visibleChoice = null;
         let visibleCount = 0;
-        const visibleDistSq = 600 * 600;
+        const visibleDist = this.role === 'CAMPER' ? 2600 : (this.role === 'DEFENDER' ? 2200 : 2000);
+        const visibleDistSq = visibleDist * visibleDist;
         for (let i = 0; i < enemies.length; i++) {
             const enemy = enemies[i];
             if (enemy === this || enemy.dead) continue;
@@ -3318,16 +3381,14 @@ class Game {
         const farBotDistSq = 1400 * 1400;
         for (let i = 0; i < this.entities.length; i++) {
             const ent = this.entities[i];
-            const isFarBotFromPlayer = this.player && ent instanceof Bot && distSq(ent.pos, this.player.pos) > farBotDistSq;
-            if (isFarBotFromPlayer && farBotUpdateStride > 1 && (this.tick + ent.id) % farBotUpdateStride !== 0) {
-                continue;
-            }
             if (ent instanceof Bot) {
+                const isFarBotFromPlayer = this.player && distSq(ent.pos, this.player.pos) > farBotDistSq;
+                const botAiStride = isFarBotFromPlayer ? aiStride * farBotUpdateStride : aiStride;
                 const enemies = CONFIG.GAME_MODE === 'DM'
                     ? this.enemyCacheDm
                     : (ent.team === 1 ? this.enemyCacheByTeam[1] : this.enemyCacheByTeam[2]);
                 const cache = { enemies, medkits: this.medkits, weaponCrates: this.weaponCrates };
-                if (aiStride === 1 || (this.tick + ent.id) % aiStride === 0) {
+                if (botAiStride === 1 || (this.tick + ent.id) % botAiStride === 0) {
                     ent.aiUpdate(this.terrain, this.entities, this.projectiles, this, cache);
                     ent.lastAiTick = this.tick;
                 }
